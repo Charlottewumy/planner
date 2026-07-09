@@ -525,7 +525,7 @@ function App() {
     if (!loaded) return;
     (async () => {
       let cfg = null;
-      try { const r = await window.storage.get(CLOUD_KEY); if (r && r.value) cfg = JSON.parse(r.value); } catch (e) {}
+      try { const r = await window.storage.get(CLOUD_KEY); if (r && r.value) cfg = cleanCloudCfg(JSON.parse(r.value)); } catch (e) {}
       if (autoSyncOn(cfg)) suppressPush.current = true; // 載入設定本身不算資料變更，避免開啟就誤推送/誤判衝突
       setCloudCfgApp(cfg);
       if (!autoSyncOn(cfg)) return;
@@ -3484,11 +3484,19 @@ async function markLocalChanged() {
 }
 const cloudCfgReady = (cfg) => !!(cfg && cfg.apiKey && cfg.binId && cfg.phrase);
 const autoSyncOn = (cfg) => cloudCfgReady(cfg) && cfg.auto !== false;
+// 金鑰經 LINE／記事本轉傳常混入看不見的換行或空白，瀏覽器會拒收 Authorization header
+// →載入與套用設定時一律清除（2026/07/09 手機拉取失敗「Header has invalid value」的根因）
+function cleanCloudCfg(cfg) {
+  if (!cfg || typeof cfg !== "object") return cfg;
+  return { ...cfg, apiKey: String(cfg.apiKey || "").replace(/\s+/g, ""), binId: String(cfg.binId || "").replace(/\s+/g, "") };
+}
 
 // 把雲端同步的錯誤翻成看得懂的話（取代過去一律顯示「網路問題」）
 function cloudErrMsg(e) {
   if (e && e.name === "OperationError") return "加密密語不正確，請確認與當初設定的一致。";
-  const m = (e && e.message) ? String(e.message) : "";
+  let m = (e && e.message) ? String(e.message) : "";
+  m = m.replace(/github_pat_\S+/g, "github_pat_…（Token 已隱藏）"); // 錯誤訊息不外洩 Token
+  if (/invalid value|invalid header|invalid character/i.test(m)) return "金鑰裡混進了換行或空白（多半是轉傳時被折行）。請到備份頁「取消連線」後重新貼一次同步金鑰＋密語；或更新 App 到最新版會自動修復。";
   if (m.startsWith("too_big")) {
     const p = m.split("|");
     return "資料太大：加密壓縮後約 " + (p[1] || "?") + " KB，超過單筆上限。最占空間：" + (p[2] || "") + "。請清掉一些舊資料再試。";
@@ -3869,7 +3877,7 @@ function Backup({ state, restoreAll }) {
     (async () => {
       try {
         const r = await window.storage.get(CLOUD_KEY);
-        if (r && r.value) setCloudCfg(JSON.parse(r.value));
+        if (r && r.value) setCloudCfg(cleanCloudCfg(JSON.parse(r.value)));
       } catch (e) { /* first run */ }
       setCloudLoaded(true);
     })();
@@ -3946,7 +3954,7 @@ function Backup({ state, restoreAll }) {
 
   // 首次：建立新 Bin（連初始資料一起加密上傳）
   const createBin = async () => {
-    const masterKey = apiKeyInput.trim();
+    const masterKey = apiKeyInput.replace(/\s+/g, ""); // Token 不含空白，一律清除避免換行混入
     const phrase    = phraseInput.trim();
     if (!masterKey) { setCloudMsg("請填入 GitHub Token。"); return; }
     if (!phrase)    { setCloudMsg("請設定加密密語（至少 6 個字）。"); return; }
@@ -4002,7 +4010,7 @@ function Backup({ state, restoreAll }) {
       return;
     }
     if (!p) { setCloudMsg("請同時填入加密密語。"); return; }
-    await saveCloudCfg({ apiKey: parts[0].trim(), binId: parts[1].trim(), phrase: p });
+    await saveCloudCfg({ apiKey: parts[0].replace(/\s+/g, ""), binId: parts[1].replace(/\s+/g, ""), phrase: p });
     setTokenInput(""); setPastePhrase("");
     setCloudMsg("✅ 金鑰與密語已套用！按「⬇ 從雲端拉取」把資料同步過來。");
   };
