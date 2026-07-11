@@ -2853,6 +2853,7 @@ function Ideas({ state, update, go }) {
   const [urlStatus, setUrlStatus] = useState("");
   const [urlTitle, setUrlTitle] = useState("");
   const [readInfo, setReadInfo] = useState(null); // { readStatus, truncated, author, published }
+  const [page, setPage] = useState(1); // 發想卡分頁（每頁 10 則，卡片多了捲軸才不會縮成一小條）
 
   const doReadUrl = async () => {
     const v = validateFetchUrl(url);
@@ -3025,10 +3026,28 @@ function Ideas({ state, update, go }) {
         <Trends state={state} update={update} go={go} />
       </details>
 
-      <div className="dp-ideas">
-        {state.ideas.length === 0 && <Empty>還沒有任何發想。貼一篇電子報，或請對話裡的我幫你發想。</Empty>}
-        {state.ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} onDel={() => del(idea.id)} state={state} update={update} />)}
-      </div>
+      {(() => {
+        const PER = 10;
+        const total = Math.max(1, Math.ceil(state.ideas.length / PER));
+        const cur = Math.min(page, total);
+        const shown = state.ideas.slice((cur - 1) * PER, cur * PER);
+        const goPage = (n) => { setPage(n); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); } };
+        const pager = state.ideas.length > PER ? (
+          <div className="dp-ai-bar" style={{ justifyContent: "center", flexWrap: "wrap", margin: "10px 0" }}>
+            <button className="dp-btn" disabled={cur <= 1} onClick={() => goPage(cur - 1)}>← 上一頁</button>
+            <span className="dp-hint">第 {cur}／{total} 頁・共 {state.ideas.length} 則</span>
+            <button className="dp-btn" disabled={cur >= total} onClick={() => goPage(cur + 1)}>下一頁 →</button>
+          </div>
+        ) : null;
+        return (
+          <div className="dp-ideas">
+            {pager}
+            {state.ideas.length === 0 && <Empty>還沒有任何發想。貼一篇電子報，或請對話裡的我幫你發想。</Empty>}
+            {shown.map((idea) => <IdeaCard key={idea.id} idea={idea} onDel={() => del(idea.id)} state={state} update={update} />)}
+            {pager}
+          </div>
+        );
+      })()}
     </div>
   );
 }
