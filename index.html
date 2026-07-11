@@ -2636,7 +2636,7 @@ const IDEA_SYS_B1 =
   "你是季芸（Charlotte）的知識轉譯助手。她是連江縣馬祖南竿的親子館館長，另經營個人品牌與三姊妹品牌 Sororism。閱讀提供的文章，完成「來源查核＋攻略萃取＋四域轉譯」。只輸出 JSON 物件，禁止 markdown 與任何其他文字。"
   + "規則：1)嚴禁虛構：來源沒講的填「來源未說明」，不得補寫數據、案例或演算法規則；2)每條攻略標 evidenceType：「來源事實」=頁面明確陳述、「作者主張」=作者經驗或看法、「AI推論」=你延伸的應用；3)四個領域全部評估，不適用就寫不適用＋原因，禁止硬湊；4)只留能改變行動的攻略 1-4 條，每條只含一個核心觀念；5)全部繁體中文台灣用語，禁止簡體字與中國用語。"
   + "四域定義：D1=AI×親子館/館務管理（公務：活動、SOP、服務、評鑑；不得替私人品牌導流）；D2=個人進修/AI能力（學習方法、AI工作流、判斷框架、效率工具）；D3=個人品牌/內容經營（手帳、旅行、生活敘事、社群經營）；D4=三姊妹事業Sororism（水晶/香氛蠟燭/生命靈數/塔羅的品牌、產品、變現；不得做醫療療效或保證改運宣稱）。"
-  + "JSON 欄位：{\"title\":\"本次轉譯主題短名\",\"category\":\"從 AI動態/社群潮流/親子教育/經營管理/個人成長/其他 擇一\",\"sourceMeta\":{\"evidenceLevel\":\"A|B|C|D\",\"sourceType\":\"官方文件|研究|新聞|教學文|個人經驗|銷售頁|其他\"},\"insights\":[{\"claim\":\"一句話攻略主張\",\"evidenceType\":\"來源事實|作者主張|AI推論\",\"conditions\":\"適用條件\",\"risks\":\"風險或反例\"}],\"domains\":[{\"code\":\"D1\",\"name\":\"親子館\",\"fit\":\"高|中|低|不適用\",\"reason\":\"真實連結或不適用原因\",\"ideas\":[\"具體做法\"],\"nextAction\":\"30分鐘內可啟動的最小行動\",\"deliverable\":\"預期產物\"},{\"code\":\"D2\",\"name\":\"個人進修\",...},{\"code\":\"D3\",\"name\":\"個人品牌\",...},{\"code\":\"D4\",\"name\":\"Sororism\",...}],\"actions\":[\"2-4個下一步\"],\"method\":\"一句話點出可複用的底層方法\"}。evidenceLevel 判準：A=官方文件/原始研究、B=可追溯來源的專業整理、C=創作者經驗主張、D=銷售頁或來源不明。";
+  + "JSON 欄位：{\"title\":\"本次轉譯主題短名\",\"category\":\"從 AI動態/社群潮流/親子教育/經營管理/個人成長/其他 擇一\",\"sourceMeta\":{\"evidenceLevel\":\"A|B|C|D\",\"sourceType\":\"官方文件|研究|新聞|教學文|個人經驗|銷售頁|其他\",\"author\":\"從內文署名/自介/品牌名找出作者，找不到填 無法確認，不得猜測\",\"publishedAt\":\"內文明確可見的發布日期，沒有就填 無法確認\"},\"insights\":[{\"claim\":\"一句話攻略主張\",\"evidenceType\":\"來源事實|作者主張|AI推論\",\"conditions\":\"適用條件\",\"risks\":\"風險或反例\"}],\"domains\":[{\"code\":\"D1\",\"name\":\"親子館\",\"fit\":\"高|中|低|不適用\",\"reason\":\"真實連結或不適用原因\",\"ideas\":[\"具體做法\"],\"nextAction\":\"30分鐘內可啟動的最小行動\",\"deliverable\":\"預期產物\"},{\"code\":\"D2\",\"name\":\"個人進修\",...},{\"code\":\"D3\",\"name\":\"個人品牌\",...},{\"code\":\"D4\",\"name\":\"Sororism\",...}],\"actions\":[\"2-4個下一步\"],\"method\":\"一句話點出可複用的底層方法\"}。evidenceLevel 判準：A=官方文件/原始研究、B=可追溯來源的專業整理、C=創作者經驗主張、D=銷售頁或來源不明。";
 const IDEA_SYS_B2 =
   "你是季芸的 IG 內容策略助手。根據攻略原子與四域轉譯結果，評估她四個 IG 帳號的適配度。只輸出 JSON 物件，禁止 markdown。"
   + "四帳定位：charlotte_wu=個人主帳（馬祖親子館館長的生活/旅遊/開箱/反差人設）；charlottewu_write=手寫/鋼筆/墨水/文具（POV手部、試寫輪播）；charlotte_handmade=鉤織車縫手作（目前暫緩發文，內容先入庫備用）；sororism=三姊妹身心靈品牌 @sororism_studio（水晶/香氛蠟燭/生命靈數/塔羅；三姊妹沒有同住，不出同框內容；不得做醫療療效或保證改運宣稱）。"
@@ -2686,8 +2686,8 @@ function cleanIdeaB(o, meta) {
     sourceInfo: {
       url: meta.url || "",
       title: meta.pageTitle || "",
-      author: meta.author || "無法確認",
-      publishedAt: meta.published || "無法確認",
+      author: (meta.author && meta.author !== "無法確認") ? meta.author : (stripMd(sm.author) || "無法確認"),
+      publishedAt: (meta.published && meta.published !== "無法確認") ? meta.published : (stripMd(sm.publishedAt) || "無法確認"),
       readStatus: meta.readStatus || "manual",
       evidenceLevel: ["A", "B", "C", "D"].includes(sm.evidenceLevel) ? sm.evidenceLevel : "C",
       sourceType: sm.sourceType || "其他",
@@ -2855,15 +2855,40 @@ function Ideas({ state, update, go }) {
     if (!paste.trim()) return;
     setErr(""); setOk("");
     try {
-      const o = parseJSON(paste);
-      if (o && (Array.isArray(o.insights) || Array.isArray(o.accountPlans))) {
-        commitB(o, o.accountPlans || [], false);
-      } else {
-        commit(o);
-      }
+      const data = parseJSON(paste);
+      const arr = Array.isArray(data) ? data : [data];
+      let ideas = state.ideas, zettel = state.zettel, nNew = 0, nCards = 0;
+      arr.forEach((o) => {
+        if (!o || typeof o !== "object") return;
+        if (Array.isArray(o.insights) || Array.isArray(o.accountPlans)) {
+          const s = o.source || {};
+          const idea = cleanIdeaB(o, {
+            plans: o.accountPlans || [],
+            src: s.url || s.title || "",
+            url: s.url || "",
+            pageTitle: s.title || "",
+            readStatus: s.readStatus || "manual",
+            truncated: !!s.truncated,
+            author: s.author || "無法確認",
+            published: s.publishedAt || "無法確認",
+          });
+          const cards = autoZettelB(idea, { zettel: zettel });
+          ideas = [idea, ...ideas]; zettel = [...cards, ...zettel];
+          nNew += 1; nCards += cards.length;
+        } else {
+          const idea = cleanIdea(o, "");
+          idea.carded = true;
+          const card = autoZettel(idea, { zettel: zettel });
+          ideas = [idea, ...ideas]; zettel = [card, ...zettel];
+          nNew += 1; nCards += 1;
+        }
+      });
+      if (!nNew) throw new Error("empty");
+      update({ ideas: ideas, zettel: zettel });
+      setOk("已匯入 " + nNew + " 張轉譯卡＋" + nCards + " 張卡片盒卡片。");
       setPaste("");
     } catch (e) {
-      setErr("格式不對，請貼我給你的發想／轉譯 JSON。");
+      setErr("格式不對，請貼我給你的發想／轉譯 JSON（單張或整批陣列都可以）。");
     }
   };
 
@@ -3037,6 +3062,8 @@ function IdeaCard({ idea, onDel, state, update }) {
           📎 {idea.sourceInfo.url
             ? <a href={idea.sourceInfo.url} target="_blank" rel="noreferrer">{idea.sourceInfo.title || idea.sourceInfo.url}</a>
             : (idea.sourceInfo.title || "手動貼入")}
+          {(() => { try { return idea.sourceInfo.url ? "｜" + new URL(idea.sourceInfo.url).hostname.replace(/^www\./, "") : ""; } catch (e) { return ""; } })()}
+          ｜作者：{idea.sourceInfo.author || "無法確認"}
           ｜讀取：{({ direct: "直接讀取", fallback: "備援服務", manual: "手動貼入", partial: "部分" })[idea.sourceInfo.readStatus] || idea.sourceInfo.readStatus}
           ｜證據等級 {idea.sourceInfo.evidenceLevel}
           {idea.sourceInfo.truncated ? "｜⚠ 正文曾截斷，結果不代表完整文章" : ""}
