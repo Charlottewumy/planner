@@ -1646,6 +1646,207 @@ function igKeptIds(posts) {
   return new Set([...best.values()].map((o) => o.p.id));
 }
 
+// ─── IG 攻略工具箱（指令模板庫：本機組字串＋一鍵複製，不呼叫 AI、不吃 Gemini 額度）───
+// 來源：@lifeditstudio「Claude × IG成長 7個高效內容指令」＋ Double Tap 留存框架（2026/07 收錄）
+const IG_TOOL_AUD = [
+  { key: "charlotte_wu",       label: "@charlotte_wu（生活主帳）",    text: "25–45歲、喜歡離島生活感的女性為主：對馬祖旅遊、美食開箱、質感日常、旅行戰利品有興趣的上班族與小家庭" },
+  { key: "charlottewu_write",  label: "@charlottewu_write（手寫）",   text: "喜歡鋼筆、手寫字與文具的人：想把字寫好看、對鋼筆墨水試色與書寫工具有興趣的學生與上班族" },
+  { key: "charlotte_handmade", label: "@charlotte._handmade（手作）", text: "喜歡鉤織、車縫與手作小物的人：想跟著做、找靈感、收藏療癒手作內容的女性為主" },
+  { key: "sororism",           label: "Sororism（品牌）",             text: "喜歡姊妹日常、質感生活風格與品牌故事的年輕女性：對三姊妹共同創作的內容有共鳴" },
+  { key: "kids",               label: "親子館（公務）",               text: "連江縣（馬祖）家有0–6歲幼兒的家長與照顧者：想找親子活動、育兒資訊與托育資源的爸媽" },
+  { key: "custom",             label: "自己填",                       text: "" },
+];
+
+const IG_TOOL_PROMPTS = [
+  { id: "p1", name: "01｜爆款拆解", use: "看懂爆款影片的底層結構，提煉成可直接套用的模板", when: "看到很厲害的影片，但不知道為什麼它會爆",
+    tip: "把影片的字幕或口播文字貼進去效果最好；看不到字幕就描述影片內容。",
+    slots: [{ k: "src", label: "影片文字稿／內容描述", ta: true, ph: "貼上影片字幕、口播文字，或描述影片內容" }],
+    tpl: `你是一位專精短影音的內容策略師。
+請分析以下這支影片的結構：
+{src}
+
+我需要你告訴我：
+1. 前3秒為什麼讓人停下來？底層邏輯是什麼？
+2. 中段用了什麼方式維持觀看意願？
+3. 結尾如何引導觀眾行動？
+4. 把這支影片的底層結構提煉成一個我可以直接套用的模板
+
+請用繁體中文回答，要具體、可以直接執行。` },
+  { id: "p2", name: "02｜痛點 Hook 產生器", use: "產出讓人第一秒就想繼續看的開場白", when: "不知道怎麼開頭，或想測試不同 Hook 角度", aud: true,
+    tip: "產出後挑 3 個最有感覺的實際拍看看，數據會告訴你哪個有效。",
+    slots: [{ k: "topic", label: "主題", ph: "例：馬祖親子景點懶人包" }],
+    tpl: `我的目標受眾是：{aud}
+主題是：{topic}
+
+請列出這群人對這個主題最真實的10個內心話或痛點。
+然後把每一個改寫成10字內的Reels開場白。
+
+要求：
+- 不要老套的說法
+- 要讓人第一秒皺眉點頭，覺得「這說的是我」
+- 直接、有畫面感、有衝擊力
+
+請用繁體中文回答。` },
+  { id: "p3", name: "03｜高完播腳本產生器", use: "寫出每一句都有理由繼續看的 30 秒腳本", when: "有主題但不知道怎麼組織成一支完整影片", aud: true,
+    tip: "拿到腳本後大聲念出來，念起來卡的地方就是要改的地方。",
+    slots: [{ k: "topic", label: "主題", ph: "例：0–2歲玩具怎麼選" }],
+    tpl: `請幫我寫一支30秒的Instagram Reels口播腳本。
+主題是：{topic}
+目標受眾是：{aud}
+
+結構要包含：
+1. Hook（前3秒）：讓人停下來，不能是廢話
+2. 衝突（3-15秒）：為什麼這件事很多人搞錯了
+3. 翻轉洞察（15-25秒）：真正的關鍵是什麼
+4. CTA（最後5秒）：一句話讓人知道下一步
+
+要求：
+- 每一句話都要讓上一句有理由繼續聽
+- 句子要短，不廢話
+- 口語化，像在跟朋友說話
+
+請用繁體中文回答。` },
+  { id: "p4", name: "04｜社會證明轉換", use: "把真實數據或成果變成有衝擊力的影片字幕", when: "有真實結果想分享，想讓它更有畫面感",
+    tip: "只放真實發生過的數據，真實的數字比誇大的更有說服力。",
+    slots: [{ k: "result", label: "你的數據或成果", ta: true, ph: "例：親子館月活動場場額滿、鉤織訂單排到下個月" }],
+    tpl: `我有一個真實的結果：
+{result}
+
+請把它轉成5句適合放在影片上的短句。
+
+要求：
+- 每句10字內
+- 要有畫面感和好奇缺口，讓人想繼續看
+- 不要誇大，用事實說話
+- 有衝擊力，不是流水帳
+
+請用繁體中文回答。` },
+  { id: "p5", name: "05｜收藏型清單產生器", use: "做出讓人看完就想截圖收藏的乾貨內容", when: "想做輪播或條列式 Reels 字幕，提高收藏率", aud: true,
+    tip: "收藏率是演算法最喜歡的信號之一，這個指令專為此設計。",
+    slots: [{ k: "topic", label: "主題", ph: "例：鋼筆入門避坑清單" }],
+    tpl: `主題是：{topic}
+目標受眾是：{aud}
+
+請列出5個關於這個主題、真實有用但95%人不知道的具體做法。
+
+要求：
+- 每句12字內
+- 只要可以直接執行的方法，不要理論
+- 讓人看完第一個反應是「我要存起來」
+- 具體到有行動指令，不是模糊建議
+
+請用繁體中文回答。` },
+  { id: "p6", name: "06｜一稿多吃", use: "把一個概念同時變成四種格式（7秒Reels／輪播／貼文／限動）", when: "有好概念或腳本，想最大化使用價值",
+    tip: "一個好概念可以發四次，讓不同的人在不同時間點看到你。",
+    slots: [{ k: "src", label: "原始文字或腳本", ta: true, ph: "貼上你的原始文字或腳本" }],
+    tpl: `請把以下這段內容改寫成四種格式：
+{src}
+
+四種格式：
+1. 一支7秒Reels字幕：一句話，最高衝擊，讓人停下來
+2. 一篇5頁輪播的封面標題和每頁重點（每頁一個核心句）
+3. 一篇IG貼文caption：有hook、有價值、有CTA
+4. 一則Stories文案：輕鬆、像朋友在說話、有互動感
+
+每種格式都要符合各自的節奏和長度。
+請用繁體中文回答。` },
+  { id: "p7", name: "07｜高互動 CTA 產生器", use: "寫出讓人真的想留言或收藏的行動呼籲", when: "不知道怎麼在結尾引導互動",
+    tip: "從 10 個裡挑最順的那一個用；一次只用一個 CTA、一個動作。",
+    slots: [{ k: "topic", label: "主題", ph: "例：親子館暑期活動報名" }, { k: "action", label: "希望觀眾做的動作", opts: ["留言關鍵字", "收藏", "追蹤", "分享給朋友"] }],
+    tpl: `我的主題是：{topic}
+我希望觀眾做的動作是：{action}
+
+請幫我寫10個適合這個主題的CTA句子。
+
+要求：
+- 要短，最多15字
+- 讓人覺得不做這個動作會損失什麼
+- 有創意，不要太普通的說法
+- 直接給行動指令，不要說「如果你覺得有用的話」
+
+請用繁體中文回答。` },
+  { id: "p8", name: "08｜Double Tap 白話翻譯", use: "每個專業概念說兩遍：術語一次＋小學生也懂的比喻一次，提升留存", when: "腳本出現新名詞、抽象概念、行業術語，或轉折點前",
+    tip: "Repeater Line 不是重複，是翻譯；比喻要用觀眾日常熟悉的場景。",
+    slots: [{ k: "src", label: "你的腳本／文案", ta: true, ph: "貼上要改的口播腳本或文案" }],
+    tpl: `你是短影音口播教練。請用「Double Tap」技法改寫以下腳本：
+{src}
+
+Double Tap 規則：
+- 每出現一個專業術語或抽象概念，先保留原句（給懂的人），緊接著補一句 Repeater Line：用小學生也懂的日常比喻再說一次（給所有人）
+- Repeater Line 不是重複，是翻譯；比喻要用觀眾日常生活已經熟悉的場景
+- 兩句合起來才構成一個完整的理解單位
+- 其他句子保持原樣，不要整篇重寫
+
+請輸出改寫後的完整腳本，並標出新增的 Repeater Line。請用繁體中文回答。` },
+];
+
+function IGToolbox() {
+  const [pid, setPid]       = useState("p2");
+  const [audKey, setAudKey] = useState("charlotte_wu");
+  const [aud, setAud]       = useState(IG_TOOL_AUD[0].text);
+  const [vals, setVals]     = useState({});
+  const [msg, setMsg]       = useState("");
+  const p = IG_TOOL_PROMPTS.find((x) => x.id === pid) || IG_TOOL_PROMPTS[0];
+  const inputSt = { width: "100%", boxSizing: "border-box", padding: "9px 12px", border: "1px solid var(--line)", borderRadius: 11, background: "var(--card2)", font: "inherit", marginBottom: 8 };
+  const pickAud = (k) => { setAudKey(k); const a = IG_TOOL_AUD.find((x) => x.key === k); setAud(a ? a.text : ""); };
+  const build = () => {
+    let t = p.tpl;
+    if (p.aud) t = t.split("{aud}").join(aud.trim() || "[受眾描述]");
+    p.slots.forEach((s) => {
+      const v = String(vals[s.k] || (s.opts ? s.opts[0] : "")).trim();
+      t = t.split("{" + s.k + "}").join(v || "[" + s.label + "]");
+    });
+    return t;
+  };
+  const copy = async () => {
+    const t = build();
+    let ok = false;
+    try { await navigator.clipboard.writeText(t); ok = true; }
+    catch (e) {
+      try { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); ok = true; } catch (e2) {}
+    }
+    setMsg(ok ? "已複製！開一個 Claude 或 Gemini 對話貼上就能用" : "這個環境擋複製，請從下方預覽全選複製");
+    setTimeout(() => setMsg(""), 4000);
+  };
+  return (
+    <details className="dp-bulk">
+      <summary>🧰 IG 攻略工具箱（8 個指令模板，填好一鍵複製）</summary>
+      <p className="dp-import-sub">
+        來自 @lifeditstudio 的 7 個成長指令＋Double Tap 留存技法。選指令、填空、按複製，貼到任何 AI 對話就能用；全程在本機組字串，<b>不呼叫 Gemini、不吃額度</b>。<br />
+        攻略原文的提醒：真正讓帳號成長的不是指令，是連續 30 天每天執行。
+      </p>
+      <select value={pid} onChange={(e) => setPid(e.target.value)} style={inputSt}>
+        {IG_TOOL_PROMPTS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
+      <p className="dp-hint" style={{ margin: "0 0 8px" }}>用途：{p.use}<br />時機：{p.when}<br />提示：{p.tip}</p>
+      {p.aud && (
+        <div>
+          <select value={audKey} onChange={(e) => pickAud(e.target.value)} style={inputSt}>
+            {IG_TOOL_AUD.map((a) => <option key={a.key} value={a.key}>受眾預設：{a.label}</option>)}
+          </select>
+          <textarea className="dp-ta" rows={2} placeholder="目標受眾描述（可直接改）" value={aud} onChange={(e) => setAud(e.target.value)} style={{ marginBottom: 8 }} />
+        </div>
+      )}
+      {p.slots.map((s) => s.opts ? (
+        <select key={s.k} value={vals[s.k] || s.opts[0]} onChange={(e) => setVals({ ...vals, [s.k]: e.target.value })} style={inputSt}>
+          {s.opts.map((o) => <option key={o} value={o}>{s.label}：{o}</option>)}
+        </select>
+      ) : s.ta ? (
+        <textarea key={s.k} className="dp-ta" rows={4} placeholder={s.label + "…（" + (s.ph || "") + "）"}
+          value={vals[s.k] || ""} onChange={(e) => setVals({ ...vals, [s.k]: e.target.value })} style={{ marginBottom: 8 }} />
+      ) : (
+        <input key={s.k} placeholder={s.label + (s.ph ? "（" + s.ph + "）" : "")}
+          value={vals[s.k] || ""} onChange={(e) => setVals({ ...vals, [s.k]: e.target.value })} style={inputSt} />
+      ))}
+      <div className="dp-ai-bar">
+        <button className="dp-btn solid" onClick={copy}>複製完整指令</button>
+        {msg && <span className="dp-hint">{msg}</span>}
+      </div>
+      <textarea className="dp-ta" rows={6} readOnly value={build()} style={{ marginTop: 8, opacity: .8 }} />
+    </details>
+  );
+}
+
 function IG({ state, update }) {
   const [form, setForm] = useState({
     account: "charlotte_wu", type: "carousel", date: todayISO(), topic: "",
@@ -1868,6 +2069,8 @@ function IG({ state, update }) {
           {msg && <span className="dp-hint">{msg}</span>}
         </div>
       </details>
+
+      <IGToolbox />
 
       <div className="dp-ig-count">
         待發 <b>{active.length}</b> 則{published.length > 0 ? <>・已發 <b>{published.length}</b> 則</> : null}
