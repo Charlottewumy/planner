@@ -1861,6 +1861,37 @@ function IGToolbox() {
   );
 }
 
+// ─── 候選池匯出資料夾記憶（File System Access API；資料夾把手只能存 IndexedDB） ───
+const POOL_DIR_KEY = "igPoolDir";
+function poolDb() {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open("dp-fsa", 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore("handles");
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function poolDirGet() {
+  try {
+    const db = await poolDb();
+    return await new Promise((res) => {
+      const rq = db.transaction("handles", "readonly").objectStore("handles").get(POOL_DIR_KEY);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => res(null);
+    });
+  } catch (e) { return null; }
+}
+async function poolDirSet(h) {
+  try {
+    const db = await poolDb();
+    return await new Promise((res) => {
+      const rq = db.transaction("handles", "readwrite").objectStore("handles").put(h, POOL_DIR_KEY);
+      rq.onsuccess = () => res(true);
+      rq.onerror = () => res(false);
+    });
+  } catch (e) { return false; }
+}
+
 // ─── IG 候選池（四域轉譯所產生的構想；charlotte 選了日期按「排入」才會進行事曆） ───
 function IGCandidates({ state, update }) {
   const list = state.igCandidates || [];
@@ -1882,11 +1913,58 @@ function IGCandidates({ state, update }) {
     update({ igPosts: [...state.igPosts, post], events: [...state.events, ev], igCandidates: list.filter((x) => x.id !== c.id) });
     if (window.appToast) window.appToast("已排入 " + c.date + "，狀態＝草稿");
   };
+  // 匯出候選池給每天 8 點的 IG 任務讀：直接寫進她指定過的資料夾（記住位置），不支援時退回一般下載
+  const buildPool = () => JSON.stringify({ exportedAt: todayISO(), candidates: list }, null, 2);
+  const downloadPool = () => {
+    const blob = new Blob([buildPool()], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "ig候選池_匯出.json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    if (window.appToast) window.appToast("這個環境不能直接寫資料夾，已改用下載，請放進「IG排程匯入」");
+  };
+  const exportPool = async () => {
+    if (!window.showDirectoryPicker) { downloadPool(); return; }
+    try {
+      let dir = await poolDirGet();
+      if (dir) {
+        let perm = await dir.queryPermission({ mode: "readwrite" });
+        if (perm !== "granted") perm = await dir.requestPermission({ mode: "readwrite" });
+        if (perm !== "granted") dir = null;
+      }
+      if (!dir) {
+        if (window.appToast) window.appToast("第一次使用：請選專案裡的「IG排程匯入」資料夾（只要選這一次）");
+        dir = await window.showDirectoryPicker({ id: "ig-pool", mode: "readwrite" });
+        await poolDirSet(dir);
+      }
+      const fh = await dir.getFileHandle("ig候選池_匯出.json", { create: true });
+      const w = await fh.createWritable();
+      await w.write(buildPool());
+      await w.close();
+      if (window.appToast) window.appToast("✓ 已直接存進「" + (dir.name || "指定資料夾") + "」，每日任務讀得到了");
+    } catch (e) {
+      if (e && e.name === "AbortError") return; // 使用者按取消
+      downloadPool();
+    }
+  };
+  const rePickDir = async () => {
+    try {
+      const d = await window.showDirectoryPicker({ id: "ig-pool", mode: "readwrite" });
+      await poolDirSet(d);
+      if (window.appToast) window.appToast("之後會存到「" + d.name + "」");
+    } catch (e) { /* 取消就算了 */ }
+  };
   if (!list.length) return null;
   const selSt = { padding: "6px 9px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--card2)", font: "inherit" };
   return (
     <details className="dp-bulk" open>
       <summary>🗂 IG 候選池（{list.length}）——來自四域轉譯所，選日期後才進行事曆</summary>
+      <div className="dp-ai-bar" style={{ marginTop: 6 }}>
+        <button className="dp-btn" onClick={exportPool}>⬇ 匯出候選池（給每日任務）</button>
+        {typeof window.showDirectoryPicker === "function" && <button className="dp-btn" onClick={rePickDir}>📁 重選資料夾</button>}
+        <span className="dp-hint">第一次會請妳選「IG排程匯入」資料夾，之後按一下就直接存進去；每天 8 點的內容任務會參考候選池排週程</span>
+      </div>
       {list.map((c) => (
         <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 11px", margin: "8px 0", borderLeft: "3px solid " + igAccOf(c.account).color, background: "var(--card2)" }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -3036,6 +3114,22 @@ function IdeaCard({ idea, onDel, state, update }) {
     }
     setUpgrading(false);
   };
+  // 只補跑第二階段（四帳適配）：升級或轉譯時第二段失敗、卡片有原子沒適配時用
+  const retryPlans = async () => {
+    setUpgrading(true); setUpMsg("");
+    try {
+      const o2 = parseJSON(await callClaude(IDEA_SYS_B2,
+        "主題：" + idea.title + "\n攻略原子與四域結果：\n" + JSON.stringify({ insights: idea.insights, domains: idea.domains })));
+      // 借 cleanIdeaB 的清洗規則洗 accountPlans（其餘欄位不用）
+      const plans = cleanIdeaB({}, { plans: (o2 && o2.accountPlans) || [] }).accountPlans;
+      if (!plans.length) throw new Error("AI 沒有回傳有效的四帳適配，請再試一次");
+      update({ ideas: state.ideas.map((x) => x.id === idea.id ? { ...x, accountPlans: plans } : x) });
+      setUpMsg("四帳適配完成！");
+    } catch (e) {
+      setUpMsg(aiErrMsg(e, "四帳適配"));
+    }
+    setUpgrading(false);
+  };
 
   // 手動「AI 精煉存卡片盒」：發想時已自動存過一張原文卡，這顆是要 AI 濃縮成觀點卡時才按
   const toCard = async () => {
@@ -3232,6 +3326,11 @@ function IdeaCard({ idea, onDel, state, update }) {
         {!(idea.insights && idea.insights.length) && (
           <button className="dp-btn" disabled={upgrading} onClick={upgrade}>
             {upgrading ? "AI 升級中…（兩階段）" : "⟳ 升級成新格式（四域＋四帳）"}
+          </button>
+        )}
+        {Array.isArray(idea.insights) && idea.insights.length > 0 && !(idea.accountPlans && idea.accountPlans.length) && (
+          <button className="dp-btn" disabled={upgrading} onClick={retryPlans}>
+            {upgrading ? "AI 適配中…" : "⟳ 補跑四帳適配"}
           </button>
         )}
         {upMsg && <span className="dp-hint">{upMsg}</span>}
