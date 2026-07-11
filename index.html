@@ -3103,6 +3103,26 @@ function IdeaCard({ idea, onDel, state, update }) {
     update({ igCandidates: [c, ...(state.igCandidates || [])] });
     if (window.appToast) window.appToast("已加入 IG 候選池，到「IG 排程」分頁編輯／選日期");
   };
+  // D1/D2 等領域的最小行動 → 一鍵變待辦（D1 親子館自動標公務），這是四域中非 IG 領域的實際產出出口
+  const addDomainTodo = (d) => {
+    const text = "【" + ((d.code || "") + (d.name ? " " + d.name : "")).trim() + "】" + d.nextAction
+      + (d.deliverable ? "（產物：" + d.deliverable + "）" : "");
+    if ((state.todos || []).some((t) => t.text === text)) {
+      if (window.appToast) window.appToast("這條行動已經在待辦清單了");
+      return;
+    }
+    const todo = { id: uid(), text: text, owner: "", due: "", priority: "中", done: false, scope: d.code === "D1" ? "work" : "personal", catId: "" };
+    update({ todos: [todo, ...state.todos] });
+    if (window.appToast) window.appToast("已加入待辦（" + (d.code === "D1" ? "公務" : "私人") + "），到「待辦」分頁安排時間");
+  };
+  // 下一步行動整批 → 待辦（自動去重）
+  const actionsToTodos = () => {
+    const news = (idea.actions || []).filter((a) => a && !(state.todos || []).some((t) => t.text === a));
+    if (!news.length) { if (window.appToast) window.appToast("這些行動已經都在待辦清單了"); return; }
+    const todos = news.map((a) => ({ id: uid(), text: a, owner: "", due: "", priority: "中", done: false, scope: "personal", catId: "" }));
+    update({ todos: [...todos, ...state.todos] });
+    if (window.appToast) window.appToast("已把 " + todos.length + " 條行動加入待辦");
+  };
 
   // B 版：把舊格式卡就地升級成新格式（用既有摘要重跑四域＋四帳；原文不可考，證據上限＝作者主張）
   const upgrade = async () => {
@@ -3277,6 +3297,10 @@ function IdeaCard({ idea, onDel, state, update }) {
                       ? (d.reason ? "：" + d.reason : "")
                       : (d.nextAction ? "｜最小行動：" + d.nextAction : "")}
                     {d.fit !== "不適用" && d.deliverable ? "｜產物：" + d.deliverable : ""}</span>
+                  {d.fit !== "不適用" && d.nextAction ? (
+                    <button className="dp-btn" style={{ marginLeft: 6, padding: "2px 9px", fontSize: 12, flexShrink: 0 }}
+                      onClick={() => addDomainTodo(d)}>→ 待辦</button>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -3322,7 +3346,9 @@ function IdeaCard({ idea, onDel, state, update }) {
           )}
           {idea.actions.length > 0 && (
             <div className="dp-idea-sec">
-              <div className="dp-idea-h">下一步行動</div>
+              <div className="dp-idea-h">下一步行動
+                <button className="dp-btn" style={{ marginLeft: 8, padding: "2px 9px", fontSize: 12 }} onClick={actionsToTodos}>＋ 全部轉待辦</button>
+              </div>
               {idea.actions.map((a, i) => (
                 <div key={i} className="dp-idea-act"><span className="dp-idea-box" />{a}</div>
               ))}
