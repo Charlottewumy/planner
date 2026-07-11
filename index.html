@@ -1904,7 +1904,7 @@ function IGCandidates({ state, update }) {
     if (!c.date) { if (window.appToast) window.appToast("先選日期，才能排入行事曆"); return; }
     if (!c.topic.trim()) { if (window.appToast) window.appToast("先填主題，才能排入行事曆"); return; }
     const eventId = uid();
-    const post = { id: uid(), account: c.account, type: c.type, date: c.date, topic: c.topic.trim(), status: "草稿", eventId, detail: c.detail || "" };
+    const post = { id: uid(), account: c.account, type: c.type, date: c.date, topic: c.topic.trim(), status: "草稿", eventId, detail: c.detail || "", ideaId: c.ideaId || "" };
     const ev = {
       id: eventId, date: c.date, time: "",
       title: `IG・${igAccOf(c.account).label}：${post.topic}`,
@@ -3083,6 +3083,10 @@ function IdeaCard({ idea, onDel, state, update }) {
 
   // B 版：把某帳號的實戰方案放進 IG 候選池（不動既有排程；日期由 charlotte 在 IG 分頁決定）
   const addCandidate = (p) => {
+    if ((state.igCandidates || []).some((cc) => cc.ideaId === idea.id && cc.account === p.account)) {
+      if (window.appToast) window.appToast("這個帳號的構想已經在候選池了");
+      return;
+    }
     const c = {
       id: uid(), account: p.account,
       type: POST_TYPES[p.bestFormat] ? p.bestFormat : "carousel",
@@ -3304,7 +3308,13 @@ function IdeaCard({ idea, onDel, state, update }) {
                         + (p.verificationNeeded && p.verificationNeeded.length ? "⚠ 待查證：" + p.verificationNeeded.join("、") + "\n" : "")
                         + (p.risk ? "風險：" + p.risk : "")}
                     </div>
-                    <button className="dp-btn" style={{ marginTop: 7 }} onClick={() => addCandidate(p)}>＋ 加入 IG 候選池</button>
+                    {(() => {
+                      const inPosts = (state.igPosts || []).some((pp) => pp.ideaId === idea.id && pp.account === p.account);
+                      if (inPosts) return <span className="dp-hint" style={{ display: "inline-block", marginTop: 7 }}>✓ 已排入行事曆</span>;
+                      const inPool = (state.igCandidates || []).some((cc) => cc.ideaId === idea.id && cc.account === p.account);
+                      if (inPool) return <span className="dp-hint" style={{ display: "inline-block", marginTop: 7 }}>✓ 已在候選池（到 IG 分頁排期）</span>;
+                      return <button className="dp-btn" style={{ marginTop: 7 }} onClick={() => addCandidate(p)}>＋ 加入 IG 候選池</button>;
+                    })()}
                   </details>
                 );
               })}
