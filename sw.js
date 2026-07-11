@@ -1,4 +1,4 @@
-const CACHE = "gz-cache-v1";
+const CACHE = "gz-cache-v2"; // B 版網址讀取上線；activate 時會自動清掉 v1 舊快取
 const CORE = ["./", "./index.html"];
 const CDN = [
   "https://unpkg.com/react@18.2.0/umd/react.production.min.js",

@@ -85,6 +85,7 @@ const blankState = {
     { id: "tcD", name: "D想法", kind: "idea" },
   ],
   igPosts: [],
+  igCandidates: [],
   trends: [],
   journal: [],
   emails: [],
@@ -132,6 +133,19 @@ function sanitizeState(raw) {
       date: typeof p.date === "string" ? p.date : "",
       topic: typeof p.topic === "string" ? p.topic : "",
       status: p.status || "草稿",
+    }));
+  // IG 候選池（B 版四域轉譯所產生的構想；date 可為空，排入行事曆時才要求日期）
+  clean.igCandidates = (clean.igCandidates || [])
+    .filter((c) => c && typeof c === "object" && !Array.isArray(c))
+    .map((c) => ({
+      ...c,
+      id: c.id || uid(),
+      account: IG_ACCOUNTS[c.account] ? c.account : "charlotte_wu",
+      type: POST_TYPES[c.type] ? c.type : "carousel",
+      topic: typeof c.topic === "string" ? c.topic : "",
+      date: typeof c.date === "string" ? c.date : "",
+      status: typeof c.status === "string" ? c.status : "構想",
+      detail: typeof c.detail === "string" ? c.detail : "",
     }));
   const _normLib = (arr) => (arr || [])
     .filter((x) => x && typeof x === "object" && !Array.isArray(x))
@@ -1847,6 +1861,60 @@ function IGToolbox() {
   );
 }
 
+// ─── IG 候選池（四域轉譯所產生的構想；charlotte 選了日期按「排入」才會進行事曆） ───
+function IGCandidates({ state, update }) {
+  const list = state.igCandidates || [];
+  const setC = (id, patch) => update({ igCandidates: list.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+  const del = async (id) => {
+    if (!(await window.appConfirm("確定刪除這個候選構想？"))) return;
+    update({ igCandidates: list.filter((c) => c.id !== id) });
+  };
+  const schedule = (c) => {
+    if (!c.date) { if (window.appToast) window.appToast("先選日期，才能排入行事曆"); return; }
+    if (!c.topic.trim()) { if (window.appToast) window.appToast("先填主題，才能排入行事曆"); return; }
+    const eventId = uid();
+    const post = { id: uid(), account: c.account, type: c.type, date: c.date, topic: c.topic.trim(), status: "草稿", eventId, detail: c.detail || "" };
+    const ev = {
+      id: eventId, date: c.date, time: "",
+      title: `IG・${igAccOf(c.account).label}：${post.topic}`,
+      category: c.account === "sororism" ? "sororism" : "personal",
+    };
+    update({ igPosts: [...state.igPosts, post], events: [...state.events, ev], igCandidates: list.filter((x) => x.id !== c.id) });
+    if (window.appToast) window.appToast("已排入 " + c.date + "，狀態＝草稿");
+  };
+  if (!list.length) return null;
+  const selSt = { padding: "6px 9px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--card2)", font: "inherit" };
+  return (
+    <details className="dp-bulk" open>
+      <summary>🗂 IG 候選池（{list.length}）——來自四域轉譯所，選日期後才進行事曆</summary>
+      {list.map((c) => (
+        <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 11px", margin: "8px 0", borderLeft: "3px solid " + igAccOf(c.account).color, background: "var(--card2)" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <select style={selSt} value={c.account} onChange={(e) => setC(c.id, { account: e.target.value })}>
+              {Object.entries(IG_ACCOUNTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <select style={selSt} value={c.type} onChange={(e) => setC(c.id, { type: e.target.value })}>
+              {Object.entries(POST_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <input type="date" style={selSt} value={c.date} onChange={(e) => setC(c.id, { date: e.target.value })} />
+            <span className="dp-hint">{c.status}</span>
+            <button className="dp-btn" onClick={() => schedule(c)}>排入行事曆</button>
+            <button className="dp-x" onClick={() => del(c.id)}>✕</button>
+          </div>
+          <input style={{ ...selSt, width: "100%", boxSizing: "border-box", marginTop: 6 }} value={c.topic}
+            placeholder="主題（可編輯）" onChange={(e) => setC(c.id, { topic: e.target.value })} />
+          {c.detail && (
+            <details style={{ marginTop: 5 }}>
+              <summary className="dp-hint" style={{ cursor: "pointer" }}>構想細節（Hook／骨架／CTA／素材）</summary>
+              <div className="dp-hint" style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{c.detail}</div>
+            </details>
+          )}
+        </div>
+      ))}
+    </details>
+  );
+}
+
 function IG({ state, update }) {
   const [form, setForm] = useState({
     account: "charlotte_wu", type: "carousel", date: todayISO(), topic: "",
@@ -2069,6 +2137,8 @@ function IG({ state, update }) {
           {msg && <span className="dp-hint">{msg}</span>}
         </div>
       </details>
+
+      <IGCandidates state={state} update={update} />
 
       <IGToolbox />
 
@@ -2488,6 +2558,179 @@ function Journal({ state, update }) {
   );
 }
 
+// ─── B 版：四域轉譯所網址讀取（直接讀取 → 公開轉文字服務備援 → 人工貼全文） ───
+const URL_READ = {
+  TIMEOUT_MS: 15000,   // 單次讀取逾時（毫秒）
+  MIN_CHARS: 300,      // 低於此字數視為「內容過短」
+  MAX_CHARS: 45000,    // 送 AI 的正文上限，超過會截斷並明確標示
+  FALLBACK_NAME: "Jina Reader（公開網頁轉文字服務）",
+  FALLBACK_PREFIX: "https://r.jina.ai/", // 備援只會收到使用者貼的公開網址本身，絕不夾帶 API Key 或本機資料
+};
+// 網址驗證：只收公開 http(s)；擋 file:/javascript:/data:/blob:、localhost 與私人網段
+function validateFetchUrl(str) {
+  const s = String(str || "").trim();
+  if (!s) return { ok: false, msg: "請先貼上網址" };
+  let u;
+  try { u = new URL(s); } catch (e) { return { ok: false, msg: "網址格式錯誤，請貼完整的公開網址（https://…）" }; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, msg: "只支援 http(s) 公開網頁，不接受 " + u.protocol + " 連結" };
+  const h = u.hostname.toLowerCase();
+  const priv = h === "localhost" || h === "0.0.0.0" || h === "::1" || /\.local$/.test(h)
+    || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^169\.254\./.test(h);
+  if (priv) return { ok: false, msg: "這是內部／本機網址，只能讀公開網頁" };
+  return { ok: true, url: u, warn: u.protocol === "http:" ? "此網址未加密（http），請留意來源" : "" };
+}
+function squeezeText(t) {
+  return String(t || "").replace(/\r/g, "").replace(/[　 \t]+/g, " ").replace(/\s*\n\s*/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+// HTML → 正文純文字（DOMParser 不會執行 script；擷取結果只當純文字處理）
+function htmlToArticle(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const meta = (sel, attr) => { const el = doc.querySelector(sel); const v = el && el.getAttribute(attr); return (v || "").trim(); };
+  const tEl = doc.querySelector("title");
+  const title = (tEl ? tEl.textContent.trim() : "") || meta('meta[property="og:title"]', "content") || "";
+  const author = meta('meta[name="author"]', "content") || meta('meta[property="article:author"]', "content") || "";
+  const published = meta('meta[property="article:published_time"]', "content") || meta('meta[name="date"]', "content") || "";
+  doc.querySelectorAll("script,style,noscript,iframe,svg,form,nav,footer,header,aside,button").forEach((el) => el.remove());
+  const rootEl = doc.querySelector("article") || doc.querySelector("main") || doc.body;
+  return { title, author, published, text: squeezeText(rootEl ? rootEl.textContent : "") };
+}
+function fetchWithTimeout(u, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(u, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+// 三級讀取的前兩級：直接讀 → 備援讀（第三級＝人工貼全文，走原本的文字欄）
+async function readUrlSmart(href) {
+  let out = null;
+  try {
+    const res = await fetchWithTimeout(href, URL_READ.TIMEOUT_MS);
+    if (res.ok) {
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (ct.includes("text/html")) {
+        const art = htmlToArticle(await res.text());
+        if (art.text.length >= 40) out = { readStatus: "direct", ...art };
+      } else if (ct.includes("text/plain") || ct.includes("markdown")) {
+        out = { readStatus: "direct", title: "", author: "", published: "", text: squeezeText(await res.text()) };
+      }
+    }
+  } catch (e) { /* 多半是 CORS 或逾時 → 走備援 */ }
+  if (!out) {
+    let res2;
+    try { res2 = await fetchWithTimeout(URL_READ.FALLBACK_PREFIX + href, URL_READ.TIMEOUT_MS + 10000); }
+    catch (e) { throw new Error("直接讀取被擋，備援服務也連不上（可能離線或服務暫時故障）"); }
+    if (!res2.ok) throw new Error("直接讀取被擋，備援服務讀不到這頁（可能是登入牆／付費牆，App 不會繞過權限）");
+    const md = await res2.text();
+    const m = md.match(/^Title:\s*(.+)$/m);
+    const bodyIdx = md.indexOf("Markdown Content:");
+    out = { readStatus: "fallback", title: m ? m[1].trim() : "", author: "", published: "",
+      text: squeezeText(bodyIdx >= 0 ? md.slice(bodyIdx + 17) : md) };
+  }
+  let truncated = false;
+  if (out.text.length > URL_READ.MAX_CHARS) { out.text = out.text.slice(0, URL_READ.MAX_CHARS); truncated = true; }
+  return { ...out, truncated };
+}
+
+// ─── B 版 AI 轉譯 prompt（修正舊版「三個個人 IG」設定；兩階段呼叫避免巨型 JSON 截斷） ───
+const IDEA_SYS_B1 =
+  "你是季芸（Charlotte）的知識轉譯助手。她是連江縣馬祖南竿的親子館館長，另經營個人品牌與三姊妹品牌 Sororism。閱讀提供的文章，完成「來源查核＋攻略萃取＋四域轉譯」。只輸出 JSON 物件，禁止 markdown 與任何其他文字。"
+  + "規則：1)嚴禁虛構：來源沒講的填「來源未說明」，不得補寫數據、案例或演算法規則；2)每條攻略標 evidenceType：「來源事實」=頁面明確陳述、「作者主張」=作者經驗或看法、「AI推論」=你延伸的應用；3)四個領域全部評估，不適用就寫不適用＋原因，禁止硬湊；4)只留能改變行動的攻略 1-4 條，每條只含一個核心觀念；5)全部繁體中文台灣用語，禁止簡體字與中國用語。"
+  + "四域定義：D1=AI×親子館/館務管理（公務：活動、SOP、服務、評鑑；不得替私人品牌導流）；D2=個人進修/AI能力（學習方法、AI工作流、判斷框架、效率工具）；D3=個人品牌/內容經營（手帳、旅行、生活敘事、社群經營）；D4=三姊妹事業Sororism（水晶/香氛蠟燭/生命靈數/塔羅的品牌、產品、變現；不得做醫療療效或保證改運宣稱）。"
+  + "JSON 欄位：{\"title\":\"本次轉譯主題短名\",\"category\":\"從 AI動態/社群潮流/親子教育/經營管理/個人成長/其他 擇一\",\"sourceMeta\":{\"evidenceLevel\":\"A|B|C|D\",\"sourceType\":\"官方文件|研究|新聞|教學文|個人經驗|銷售頁|其他\"},\"insights\":[{\"claim\":\"一句話攻略主張\",\"evidenceType\":\"來源事實|作者主張|AI推論\",\"conditions\":\"適用條件\",\"risks\":\"風險或反例\"}],\"domains\":[{\"code\":\"D1\",\"name\":\"親子館\",\"fit\":\"高|中|低|不適用\",\"reason\":\"真實連結或不適用原因\",\"ideas\":[\"具體做法\"],\"nextAction\":\"30分鐘內可啟動的最小行動\",\"deliverable\":\"預期產物\"},{\"code\":\"D2\",\"name\":\"個人進修\",...},{\"code\":\"D3\",\"name\":\"個人品牌\",...},{\"code\":\"D4\",\"name\":\"Sororism\",...}],\"actions\":[\"2-4個下一步\"],\"method\":\"一句話點出可複用的底層方法\"}。evidenceLevel 判準：A=官方文件/原始研究、B=可追溯來源的專業整理、C=創作者經驗主張、D=銷售頁或來源不明。";
+const IDEA_SYS_B2 =
+  "你是季芸的 IG 內容策略助手。根據攻略原子與四域轉譯結果，評估她四個 IG 帳號的適配度。只輸出 JSON 物件，禁止 markdown。"
+  + "四帳定位：charlotte_wu=個人主帳（馬祖親子館館長的生活/旅遊/開箱/反差人設）；charlottewu_write=手寫/鋼筆/墨水/文具（POV手部、試寫輪播）；charlotte_handmade=鉤織車縫手作（目前暫緩發文，內容先入庫備用）；sororism=三姊妹身心靈品牌 @sororism_studio（水晶/香氛蠟燭/生命靈數/塔羅；三姊妹沒有同住，不出同框內容；不得做醫療療效或保證改運宣稱）。"
+  + "評分量尺（五項各 0-2 分，加總 0-10）：定位一致(0無關/1間接/2核心)、受眾價值(0無/1有趣不急/2解決明確問題)、素材可得(0無/1需額外製作/2現有素材可做)、商業或策略連結(0無/1間接/2明確)、風險(0高/1可控/2低)。總分 8-10=優先製作、5-7=候選、0-4=暫不使用；「優先製作」最多 2 個帳號。"
+  + "「優先製作」與「候選」給完整內容包；「暫不使用」只需 reason。hooks 禁止捏造數字或成效，全部繁體中文台灣用語。"
+  + "JSON：{\"accountPlans\":[{\"account\":\"charlotte_wu|charlottewu_write|charlotte_handmade|sororism\",\"score\":0,\"decision\":\"優先製作|候選|暫不使用\",\"reason\":\"…\",\"goal\":\"觸及|收藏|分享|留言|信任|名單|銷售\",\"bestFormat\":\"carousel|reels|story\",\"hooks\":[\"3個開場\"],\"outline\":[\"內容節點\"],\"cta\":\"單一CTA\",\"assets\":[\"需要素材\"],\"monetizationPath\":\"合理承接，沒有就寫 先累積信任\",\"verificationNeeded\":[\"待查證\"],\"risk\":\"風險\"}]}（四個帳號都要出現在陣列裡）";
+
+// B 版轉譯結果清洗：向後相容——summary/branches 由 insights/domains 映射，舊畫面與心智圖照常運作
+function cleanIdeaB(o, meta) {
+  const arr = (a) => (Array.isArray(a) ? a : []);
+  const insights = arr(o.insights).map((i) => ({
+    claim: stripMd(i && i.claim),
+    evidenceType: ["來源事實", "作者主張", "AI推論"].includes(i && i.evidenceType) ? i.evidenceType : "作者主張",
+    conditions: stripMd(i && i.conditions),
+    risks: stripMd(i && i.risks),
+  })).filter((i) => i.claim);
+  const domains = arr(o.domains).map((d) => ({
+    code: stripMd(d && d.code) || "",
+    name: stripMd(d && d.name),
+    fit: ["高", "中", "低", "不適用"].includes(d && d.fit) ? d.fit : "不適用",
+    reason: stripMd(d && d.reason),
+    ideas: arr(d && d.ideas).map(stripMd).filter(Boolean),
+    nextAction: stripMd(d && d.nextAction),
+    deliverable: stripMd(d && d.deliverable),
+  }));
+  const plans = arr(meta.plans).map((p) => ({
+    account: IG_ACCOUNTS[p && p.account] ? p.account : "",
+    score: Math.max(0, Math.min(10, Number(p && p.score) || 0)),
+    decision: ["優先製作", "候選", "暫不使用"].includes(p && p.decision) ? p.decision : "暫不使用",
+    reason: stripMd(p && p.reason),
+    goal: stripMd(p && p.goal),
+    bestFormat: POST_TYPES[p && p.bestFormat] ? p.bestFormat : "carousel",
+    hooks: arr(p && p.hooks).map(stripMd).filter(Boolean),
+    outline: arr(p && p.outline).map(stripMd).filter(Boolean),
+    cta: stripMd(p && p.cta),
+    assets: arr(p && p.assets).map(stripMd).filter(Boolean),
+    monetizationPath: stripMd(p && p.monetizationPath),
+    verificationNeeded: arr(p && p.verificationNeeded).map(stripMd).filter(Boolean),
+    risk: stripMd(p && p.risk),
+  })).filter((p) => p.account);
+  const sm = o.sourceMeta || {};
+  return {
+    id: uid(), date: todayISO(),
+    title: stripMd(o.title) || "未命名轉譯",
+    source: meta.src || "手動貼入",
+    category: o.category || "其他",
+    sourceInfo: {
+      url: meta.url || "",
+      title: meta.pageTitle || "",
+      author: meta.author || "無法確認",
+      publishedAt: meta.published || "無法確認",
+      readStatus: meta.readStatus || "manual",
+      evidenceLevel: ["A", "B", "C", "D"].includes(sm.evidenceLevel) ? sm.evidenceLevel : "C",
+      sourceType: sm.sourceType || "其他",
+      truncated: !!meta.truncated,
+    },
+    insights, domains, accountPlans: plans,
+    summary: insights.map((i) => i.claim),
+    branches: domains.filter((d) => d.fit !== "不適用").map((d) => ({ area: d.name || d.code, ideas: d.ideas })),
+    actions: arr(o.actions).map(stripMd).filter(Boolean),
+    method: stripMd(o.method),
+    carded: true,
+  };
+}
+// B 版卡片盒：一張來源索引卡＋每個攻略原子一張概念卡（最多 3 張），用 links 建立雙向連結
+function autoZettelB(idea, curState) {
+  let n = curState.zettel.length;
+  const srcId = uid();
+  const ins = (idea.insights || []).slice(0, 3);
+  const insCards = ins.map((i) => {
+    n += 1;
+    return {
+      id: uid(), num: String(n), date: todayISO(), links: [srcId], type: "permanent",
+      title: i.claim.slice(0, 60),
+      content: "【" + i.evidenceType + "】" + i.claim
+        + (i.conditions ? "\n適用條件：" + i.conditions : "")
+        + (i.risks ? "\n風險／反例：" + i.risks : ""),
+      tags: [idea.category, "轉譯所"].filter(Boolean),
+    };
+  });
+  n += 1;
+  const srcCard = {
+    id: srcId, num: String(n), date: todayISO(), links: insCards.map((c) => c.id), type: "permanent",
+    title: "來源索引：" + idea.title,
+    content: (idea.method ? "🔑 " + idea.method + "\n" : "")
+      + "證據等級：" + ((idea.sourceInfo && idea.sourceInfo.evidenceLevel) || "C")
+      + (ins.length ? "\n攻略原子：\n" + insCards.map((c) => "・" + c.title).join("\n") : "")
+      + ((idea.sourceInfo && idea.sourceInfo.url) ? "\n\n來源：" + idea.sourceInfo.url
+        : (idea.source && idea.source !== "手動貼入" ? "\n\n來源：" + idea.source : "")),
+    tags: [idea.category, "轉譯所", "來源卡"].filter(Boolean),
+  };
+  return [...insCards, srcCard];
+}
+
 // ─── IDEAS (四域轉譯所：收集資訊 → 轉譯成四個領域的發想) ──────
 const BR_COLORS = ["var(--brand)", "#9C6FA6", "var(--accent)", "var(--blue)", "var(--gold)"];
 
@@ -2526,27 +2769,84 @@ function Ideas({ state, update, go }) {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [paste, setPaste] = useState("");
+  // B 版網址讀取狀態
+  const [url, setUrl] = useState("");
+  const [reading, setReading] = useState(false);
+  const [urlStatus, setUrlStatus] = useState("");
+  const [urlTitle, setUrlTitle] = useState("");
+  const [readInfo, setReadInfo] = useState(null); // { readStatus, truncated, author, published }
 
-  const IDEA_SYS =
-    "你是親子館館長 Charlotte 的進修發想教練。她身兼親子館館長、Sororism 品牌共同創辦人、經營三個個人 IG，並重視個人生涯進修。閱讀她提供的電子報／文章，幫她做延伸發想。只輸出 JSON 物件，不要任何其他文字或 markdown。欄位：title(主題短名)、category(從「AI動態」「社群潮流」「親子教育」「經營管理」「個人成長」「其他」擇一)、summary(陣列，2-4 點重點，繁中精簡)、branches(陣列，每項 {area, ideas}，area 從「親子館」「Sororism」「個人IG」「個人進修」挑相關的，ideas 是該面向 2-3 個具體聯想)、actions(陣列，2-4 個可立即執行的下一步)、method(一句話點出最有價值、可複用的底層方法)。所有欄位的文字一律輸出純文字，禁止使用 ** 粗體或任何 markdown 記號。";
+  const doReadUrl = async () => {
+    const v = validateFetchUrl(url);
+    if (!v.ok) { setUrlStatus("⚠ " + v.msg); return; }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) { setUrlStatus("⚠ 目前離線：讀取網址需要網路，可先改貼全文。"); return; }
+    setReading(true); setReadInfo(null); setUrlTitle("");
+    setUrlStatus("讀取中…（直接讀取被擋時會自動改走備援服務）");
+    try {
+      const r = await readUrlSmart(v.url.href);
+      setRaw(r.text);
+      setSrc(v.url.href);
+      setUrlTitle(r.title || "（無法確認標題）");
+      setReadInfo(r);
+      if (r.text.length < URL_READ.MIN_CHARS) {
+        setUrlStatus("⚠ 只讀到 " + r.text.length + " 字，可能沒抓到正文——請檢查下方文字，不足就改貼全文。");
+      } else {
+        setUrlStatus("✓ " + (r.readStatus === "direct" ? "直接讀取成功" : "已透過" + URL_READ.FALLBACK_NAME + "讀取")
+          + "，擷取 " + r.text.length + " 字" + (r.truncated ? "（超過上限已截斷，僅會分析前段）" : "")
+          + (v.warn ? "；" + v.warn : "") + "。請先確認下方正文再開始轉譯。");
+      }
+    } catch (e) {
+      setUrlStatus("✗ 無法自動讀取：" + e.message + "。請把文章正文貼到下方欄位，網址會保留作為來源。");
+      setSrc(url.trim());
+    }
+    setReading(false);
+  };
+  const clearUrl = () => { setUrl(""); setUrlStatus(""); setUrlTitle(""); setReadInfo(null); };
 
+  // 舊格式匯入沿用（title/summary/branches…）
   const commit = (o) => {
     const idea = cleanIdea(o, src);
-    idea.carded = true; // 摘要成功即自動存卡
+    idea.carded = true;
     const card = autoZettel(idea, state);
     update({ ideas: [idea, ...state.ideas], zettel: [card, ...state.zettel] });
     setOk("發想完成！已自動用摘要存一張卡進卡片盒（沒有多耗 AI 額度）。");
   };
+  // B 版：來源查核＋攻略原子＋四域＋四帳
+  const commitB = (o, plans, planErr) => {
+    const idea = cleanIdeaB(o, {
+      plans: plans,
+      src: src,
+      url: readInfo ? src : "",
+      pageTitle: urlTitle,
+      readStatus: readInfo ? readInfo.readStatus : "manual",
+      truncated: !!(readInfo && readInfo.truncated),
+      author: (readInfo && readInfo.author) || "無法確認",
+      published: (readInfo && readInfo.published) || "無法確認",
+    });
+    const cards = autoZettelB(idea, state);
+    update({ ideas: [idea, ...state.ideas], zettel: [...cards, ...state.zettel] });
+    setOk("轉譯完成！已建立 " + cards.length + " 張卡片（攻略原子＋來源索引，已互相連結）"
+      + (planErr ? "；四帳適配這次沒成功，可再按一次或請對話裡的我補。" : "，四帳適配已完成，可在卡片上加入 IG 候選池。"));
+  };
 
   const generate = async () => {
     if (!raw.trim()) return;
+    if (raw.trim().length < URL_READ.MIN_CHARS && !(await window.appConfirm("目前正文只有 " + raw.trim().length + " 字，轉譯結果可能不可靠。仍要繼續嗎？"))) return;
     setBusy(true); setErr(""); setOk("");
     try {
-      const out = await callClaude(IDEA_SYS, (src ? "來源：" + src + "\n\n" : "") + raw);
-      commit(parseJSON(out));
-      setRaw(""); setSrc("");
+      const head = (urlTitle ? "網頁標題：" + urlTitle + "\n" : "") + (src ? "來源：" + src + "\n" : "")
+        + (readInfo && readInfo.truncated ? "注意：正文已截斷，以下僅為前段。\n" : "") + "\n";
+      const o1 = parseJSON(await callClaude(IDEA_SYS_B1, head + raw));
+      let plans = []; let planErr = false;
+      try {
+        const o2 = parseJSON(await callClaude(IDEA_SYS_B2,
+          "主題：" + (o1.title || "") + "\n攻略原子與四域結果：\n" + JSON.stringify({ insights: o1.insights, domains: o1.domains })));
+        plans = (o2 && o2.accountPlans) || [];
+      } catch (e2) { planErr = true; }
+      commitB(o1, plans, planErr);
+      setRaw(""); setSrc(""); clearUrl();
     } catch (e) {
-      setErr(aiErrMsg(e, "發想"));
+      setErr(aiErrMsg(e, "轉譯"));
     }
     setBusy(false);
   };
@@ -2556,9 +2856,14 @@ function Ideas({ state, update, go }) {
     setErr(""); setOk("");
     try {
       const o = parseJSON(paste);
-      commit(o); setPaste("");
+      if (o && (Array.isArray(o.insights) || Array.isArray(o.accountPlans))) {
+        commitB(o, o.accountPlans || [], false);
+      } else {
+        commit(o);
+      }
+      setPaste("");
     } catch (e) {
-      setErr("格式不對，請貼我給你的發想 JSON。");
+      setErr("格式不對，請貼我給你的發想／轉譯 JSON。");
     }
   };
 
@@ -2577,15 +2882,25 @@ function Ideas({ state, update, go }) {
       </header>
 
       <div className="dp-ai">
-        <div className="dp-ai-t">✦ 電子報 / 文章 → 延伸發想</div>
-        <p className="dp-ai-sub">貼上內容，AI 幫你抓重點、分面向聯想、給行動清單。手機環境 AI 可能連不上，那就把內容丟給對話裡的我，我做好發想給你貼進下方「匯入發想」。</p>
-        <input className="dp-src" placeholder="來源（選填，如 朱騏／知識複利週報）"
+        <div className="dp-ai-t">✦ 網址 / 全文 → 來源查核 → 四域轉譯 → 四帳適配</div>
+        <p className="dp-ai-sub">貼公開文章網址按「讀取網址」，或直接把全文貼進下方欄位（永遠可用的備援）。部分網站因登入、付費牆或安全限制無法自動讀取，改貼全文即可。</p>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input className="dp-src" style={{ flex: "1 1 200px" }} placeholder="公開文章網址（https://…）"
+            value={url} onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !reading && doReadUrl()} />
+          <button className="dp-btn" disabled={reading} onClick={doReadUrl}>{reading ? "讀取中…" : (readInfo || urlStatus ? "重新讀取" : "讀取網址")}</button>
+          {(url || urlStatus) && !reading && <button className="dp-btn" onClick={clearUrl}>清除網址</button>}
+        </div>
+        {urlStatus && <p className="dp-hint" style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{urlStatus}</p>}
+        {urlTitle && <p className="dp-hint" style={{ margin: "2px 0 0" }}>網頁標題：{urlTitle}</p>}
+        <input className="dp-src" placeholder="來源（讀取網址成功會自動帶入；手動貼文時選填）"
           value={src} onChange={(e) => setSrc(e.target.value)} />
-        <textarea className="dp-ta" rows={4} placeholder="把電子報或文章內容貼進來…"
+        <textarea className="dp-ta" rows={6} placeholder="文章正文（讀取網址成功會自動填入；可先檢查、修改，AI 只會分析這個欄位的文字）…"
           value={raw} onChange={(e) => setRaw(e.target.value)} />
+        {raw.trim().length > 0 && <p className="dp-hint" style={{ margin: "2px 0 6px" }}>正文 {raw.trim().length} 字{readInfo && readInfo.truncated ? "（已截斷，僅分析前段）" : ""}</p>}
         <div className="dp-ai-bar">
-          <button className="dp-btn solid" disabled={busy} onClick={generate}>
-            {busy ? "AI 發想中…" : "AI 自動發想（建議電腦版）"}
+          <button className="dp-btn solid" disabled={busy || reading} onClick={generate}>
+            {busy ? "AI 轉譯中…（兩階段，稍等一下）" : "開始四域轉譯"}
           </button>
           {err && <span className="dp-err">{err}</span>}
           {ok && !err && <span className="dp-hint">{ok}</span>}
@@ -2641,6 +2956,25 @@ function IdeaCard({ idea, onDel, state, update }) {
     if (todos.length) update({ todos: [...todos, ...state.todos] });
   };
   const delReview = (id) => update({ reviews: state.reviews.filter((r) => r.id !== id) });
+
+  // B 版：把某帳號的實戰方案放進 IG 候選池（不動既有排程；日期由 charlotte 在 IG 分頁決定）
+  const addCandidate = (p) => {
+    const c = {
+      id: uid(), account: p.account,
+      type: POST_TYPES[p.bestFormat] ? p.bestFormat : "carousel",
+      topic: idea.title, date: "", status: "構想", ideaId: idea.id,
+      detail: (p.hooks && p.hooks.length ? "Hook 候選：\n" + p.hooks.map((h, j) => (j + 1) + ". " + h).join("\n") + "\n\n" : "")
+        + (p.outline && p.outline.length ? "內容骨架：\n" + p.outline.join("\n") + "\n\n" : "")
+        + (p.cta ? "CTA：" + p.cta + "\n" : "")
+        + (p.assets && p.assets.length ? "素材：" + p.assets.join("、") + "\n" : "")
+        + (p.monetizationPath ? "變現承接：" + p.monetizationPath + "\n" : "")
+        + (p.verificationNeeded && p.verificationNeeded.length ? "⚠ 待查證：" + p.verificationNeeded.join("、") + "\n" : "")
+        + (p.risk ? "風險：" + p.risk + "\n" : "")
+        + (idea.sourceInfo && idea.sourceInfo.url ? "來源：" + idea.sourceInfo.url : ""),
+    };
+    update({ igCandidates: [c, ...(state.igCandidates || [])] });
+    if (window.appToast) window.appToast("已加入 IG 候選池，到「IG 排程」分頁編輯／選日期");
+  };
 
   // 手動「AI 精煉存卡片盒」：發想時已自動存過一張原文卡，這顆是要 AI 濃縮成觀點卡時才按
   const toCard = async () => {
@@ -2698,9 +3032,33 @@ function IdeaCard({ idea, onDel, state, update }) {
       <h3 className="dp-idea-title">{idea.title}</h3>
       <p className="dp-idea-tip">💡 點任一個聯想方框，就能用復盤框架引導你自己思考。</p>
 
+      {idea.sourceInfo && (idea.sourceInfo.url || idea.sourceInfo.readStatus) && (
+        <p className="dp-hint" style={{ margin: "0 0 8px" }}>
+          📎 {idea.sourceInfo.url
+            ? <a href={idea.sourceInfo.url} target="_blank" rel="noreferrer">{idea.sourceInfo.title || idea.sourceInfo.url}</a>
+            : (idea.sourceInfo.title || "手動貼入")}
+          ｜讀取：{({ direct: "直接讀取", fallback: "備援服務", manual: "手動貼入", partial: "部分" })[idea.sourceInfo.readStatus] || idea.sourceInfo.readStatus}
+          ｜證據等級 {idea.sourceInfo.evidenceLevel}
+          {idea.sourceInfo.truncated ? "｜⚠ 正文曾截斷，結果不代表完整文章" : ""}
+        </p>
+      )}
+
       {layout === "card" ? (
         <>
-          {idea.summary.length > 0 && (
+          {Array.isArray(idea.insights) && idea.insights.length > 0 && (
+            <div className="dp-idea-sec">
+              <div className="dp-idea-h">攻略原子（實＝來源事實・主＝作者主張・推＝AI推論）</div>
+              {idea.insights.map((i, k) => (
+                <div key={k} className="dp-idea-sum">
+                  <b>{({ "來源事實": "實", "作者主張": "主", "AI推論": "推" })[i.evidenceType] || "主"}</b>
+                  <span>{i.claim}
+                    {i.conditions ? "（適用：" + i.conditions + "）" : ""}
+                    {i.risks ? "｜風險：" + i.risks : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {!(idea.insights && idea.insights.length) && idea.summary.length > 0 && (
             <div className="dp-idea-sec">
               <div className="dp-idea-h">重點摘要</div>
               {idea.summary.map((s, i) => (
@@ -2719,6 +3077,54 @@ function IdeaCard({ idea, onDel, state, update }) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          {Array.isArray(idea.domains) && idea.domains.length > 0 && (
+            <div className="dp-idea-sec">
+              <div className="dp-idea-h">四域評估（不適用也標明原因）</div>
+              {idea.domains.map((d, k) => (
+                <div key={k} className="dp-idea-sum" style={d.fit === "不適用" ? { opacity: .55 } : null}>
+                  <b>{d.code || k + 1}</b>
+                  <span>{d.name}｜適配 {d.fit}
+                    {d.fit === "不適用"
+                      ? (d.reason ? "：" + d.reason : "")
+                      : (d.nextAction ? "｜最小行動：" + d.nextAction : "")}
+                    {d.fit !== "不適用" && d.deliverable ? "｜產物：" + d.deliverable : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {Array.isArray(idea.accountPlans) && idea.accountPlans.length > 0 && (
+            <div className="dp-idea-sec">
+              <div className="dp-idea-h">四帳適配（優先 {idea.accountPlans.filter((p) => p.decision === "優先製作").length}・候選 {idea.accountPlans.filter((p) => p.decision === "候選").length}）</div>
+              {idea.accountPlans.map((p, k) => {
+                const acc = IG_ACCOUNTS[p.account] || { label: p.account, color: "var(--muted)" };
+                if (p.decision === "暫不使用") {
+                  return (
+                    <div key={k} className="dp-idea-sum" style={{ opacity: .55 }}>
+                      <b>{p.score}</b><span>{acc.label}｜暫不使用{p.reason ? "：" + p.reason : ""}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <details key={k} style={{ margin: "5px 0", border: "1px solid var(--line)", borderRadius: 9, padding: "7px 11px", borderLeft: "3px solid " + acc.color, background: "var(--card2)" }}>
+                    <summary style={{ cursor: "pointer", fontSize: "13.5px" }}>
+                      {acc.label}｜{p.decision}（{p.score} 分）｜{postTypeOf(p.bestFormat)}{p.goal ? "｜目標：" + p.goal : ""}
+                    </summary>
+                    <div className="dp-hint" style={{ whiteSpace: "pre-wrap", marginTop: 6, lineHeight: 1.7 }}>
+                      {(p.reason ? "為什麼這帳：" + p.reason + "\n" : "")
+                        + (p.hooks && p.hooks.length ? "Hook 三案：\n" + p.hooks.map((h, j) => "　" + (j + 1) + ". " + h).join("\n") + "\n" : "")
+                        + (p.outline && p.outline.length ? "內容骨架：" + p.outline.join(" → ") + "\n" : "")
+                        + (p.cta ? "CTA：" + p.cta + "\n" : "")
+                        + (p.assets && p.assets.length ? "素材：" + p.assets.join("、") + "\n" : "")
+                        + (p.monetizationPath ? "變現承接：" + p.monetizationPath + "\n" : "")
+                        + (p.verificationNeeded && p.verificationNeeded.length ? "⚠ 待查證：" + p.verificationNeeded.join("、") + "\n" : "")
+                        + (p.risk ? "風險：" + p.risk : "")}
+                    </div>
+                    <button className="dp-btn" style={{ marginTop: 7 }} onClick={() => addCandidate(p)}>＋ 加入 IG 候選池</button>
+                  </details>
+                );
+              })}
             </div>
           )}
           {idea.actions.length > 0 && (
