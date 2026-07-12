@@ -426,10 +426,10 @@ function App() {
   const [toasts, setToasts] = useState([]);
   useEffect(() => {
     window.appConfirm = (msg) => new Promise((res) => setCfm({ msg, res }));
-    window.appToast = (msg, type) => {
+    window.appToast = (msg, type, ms) => {
       const id = Date.now() + Math.random();
       setToasts((t) => [...t, { id, msg, type: type || "ok" }]);
-      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2600);
+      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), ms || 2600);
     };
   }, []);
 
@@ -681,7 +681,7 @@ function App() {
       {toasts.length > 0 && (
         <div className="dp-toast-stack">
           {toasts.map((t) => (
-            <div key={t.id} className={"dp-toast" + (t.type === "err" ? " err" : "")}>{t.msg}</div>
+            <div key={t.id} className={"dp-toast" + (t.type === "err" ? " err" : t.type === "sync" ? " sync" : "")}>{t.msg}</div>
           ))}
         </div>
       )}
@@ -2197,6 +2197,7 @@ function IGCandidates({ state, update }) {
   const schedule = (c) => {
     if (!c.date) { if (window.appToast) window.appToast("先選日期，才能排入行事曆"); return; }
     if (!c.topic.trim()) { if (window.appToast) window.appToast("先填主題，才能排入行事曆"); return; }
+    if (c.status === "已排" || c.eventId) { if (window.appToast) window.appToast("這則已經排進行事曆了"); return; }
     const eventId = uid();
     const post = { id: uid(), account: c.account, type: c.type, date: c.date, topic: c.topic.trim(), status: "草稿", eventId, detail: c.detail || "", ideaId: c.ideaId || "" };
     const ev = {
@@ -2204,8 +2205,11 @@ function IGCandidates({ state, update }) {
       title: `IG・${igAccOf(c.account).label}：${post.topic}`,
       category: c.account === "sororism" ? "sororism" : "personal",
     };
-    update({ igPosts: [...state.igPosts, post], events: [...state.events, ev], igCandidates: list.filter((x) => x.id !== c.id) });
-    if (window.appToast) window.appToast("已排入 " + c.date + "，狀態＝草稿");
+    // 排入後卡片留在候選池、標「已排」（不再移除）：這樣不管先按哪則，自動同步的檔案都留得住，每日任務不會漏
+    const nl = list.map((x) => (x.id === c.id ? { ...x, status: "已排", eventId } : x));
+    update({ igPosts: [...state.igPosts, post], events: [...state.events, ev], igCandidates: nl });
+    if (window.appToast) window.appToast("✓ 已排入 " + c.date + "，卡片留在候選池並標「已排」", "sync", 4000);
+    autoExportPool(nl);
   };
   // 匯出候選池給每天 8 點的 IG 任務讀：直接寫進她指定過的資料夾（記住位置），不支援時退回一般下載
   const buildPool = () => JSON.stringify({ exportedAt: todayISO(), candidates: list }, null, 2);
@@ -2221,7 +2225,7 @@ function IGCandidates({ state, update }) {
       const w = await fh.createWritable();
       await w.write(JSON.stringify({ exportedAt: todayISO(), candidates: nextList }, null, 2));
       await w.close();
-      if (window.appToast) window.appToast("✓ 候選池已自動同步，明早任務讀得到");
+      if (window.appToast) window.appToast("✓ 候選池已自動同步！明早 8 點任務就會讀到這幾則", "sync", 5000);
     } catch (e) { /* 靜默失敗，不打斷編輯 */ }
   };
   const downloadPool = () => {
@@ -2289,7 +2293,7 @@ function IGCandidates({ state, update }) {
               if (e.target.value) autoExportPool(nl);
             }} />
             <span className="dp-hint">{c.status}</span>
-            <button className="dp-btn" onClick={() => schedule(c)}>排入行事曆</button>
+            <button className="dp-btn" onClick={() => schedule(c)} disabled={c.status === "已排" || !!c.eventId}>{c.status === "已排" || c.eventId ? "✓ 已排" : "加入已排"}</button>
             <button className="dp-x" onClick={() => del(c.id)}>✕</button>
           </div>
           <input style={{ ...selSt, width: "100%", boxSizing: "border-box", marginTop: 6 }} value={c.topic}
@@ -6047,6 +6051,7 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-toast-stack{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:10001;display:flex;flex-direction:column;gap:8px;align-items:center;padding:0 16px;width:100%;max-width:420px}
 .dp-toast{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:10px 18px;font-size:13.5px;color:var(--ink);box-shadow:0 6px 18px rgba(0,0,0,.18);max-width:100%}
 .dp-toast.err{border-left:4px solid var(--accent)}
+.dp-toast.sync{background:#e8f5e9;border:1px solid #66bb6a;border-left:6px solid #43a047;color:#1b5e20;font-size:15px;font-weight:700;padding:14px 22px;box-shadow:0 8px 22px rgba(67,160,71,.28)}
 `;
 
 
