@@ -2209,6 +2209,21 @@ function IGCandidates({ state, update }) {
   };
   // 匯出候選池給每天 8 點的 IG 任務讀：直接寫進她指定過的資料夾（記住位置），不支援時退回一般下載
   const buildPool = () => JSON.stringify({ exportedAt: todayISO(), candidates: list }, null, 2);
+  // 填日期就自動同步：靜默覆寫 ig候選池_匯出.json（只在已選過資料夾且仍有權限時；手機/file:// 或未授權則不動作，改按手動鈕）
+  const autoExportPool = async (nextList) => {
+    if (!window.showDirectoryPicker) return;
+    try {
+      const dir = await poolDirGet();
+      if (!dir) { if (window.appToast) window.appToast("候選池已更新；按一次「⬇ 匯出候選池」選好資料夾，之後填日期就會自動同步"); return; }
+      const perm = await dir.queryPermission({ mode: "readwrite" });
+      if (perm !== "granted") { if (window.appToast) window.appToast("候選池已更新；按一次「⬇ 匯出候選池」重新授權資料夾即可自動同步"); return; }
+      const fh = await dir.getFileHandle("ig候選池_匯出.json", { create: true });
+      const w = await fh.createWritable();
+      await w.write(JSON.stringify({ exportedAt: todayISO(), candidates: nextList }, null, 2));
+      await w.close();
+      if (window.appToast) window.appToast("✓ 候選池已自動同步，明早任務讀得到");
+    } catch (e) { /* 靜默失敗，不打斷編輯 */ }
+  };
   const downloadPool = () => {
     const blob = new Blob([buildPool()], { type: "application/json" });
     const a = document.createElement("a");
@@ -2268,7 +2283,11 @@ function IGCandidates({ state, update }) {
             <select style={selSt} value={c.type} onChange={(e) => setC(c.id, { type: e.target.value })}>
               {Object.entries(POST_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
-            <input type="date" style={selSt} value={c.date} onChange={(e) => setC(c.id, { date: e.target.value })} />
+            <input type="date" style={selSt} value={c.date} onChange={(e) => {
+              const nl = list.map((x) => (x.id === c.id ? { ...x, date: e.target.value } : x));
+              update({ igCandidates: nl });
+              if (e.target.value) autoExportPool(nl);
+            }} />
             <span className="dp-hint">{c.status}</span>
             <button className="dp-btn" onClick={() => schedule(c)}>排入行事曆</button>
             <button className="dp-x" onClick={() => del(c.id)}>✕</button>
