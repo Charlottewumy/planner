@@ -86,6 +86,7 @@ const blankState = {
   ],
   igPosts: [],
   igCandidates: [],
+  sbBoards: [],
   trends: [],
   journal: [],
   emails: [],
@@ -146,6 +147,27 @@ function sanitizeState(raw) {
       date: typeof c.date === "string" ? c.date : "",
       status: typeof c.status === "string" ? c.status : "構想",
       detail: typeof c.detail === "string" ? c.detail : "",
+    }));
+  // 分鏡工作板（每篇＝日期＋帳號＋主題＋若干格；格內 scene 是英文場景描述）
+  clean.sbBoards = (clean.sbBoards || [])
+    .filter((b) => b && typeof b === "object" && !Array.isArray(b))
+    .map((b) => ({
+      ...b,
+      id: b.id || uid(),
+      date: typeof b.date === "string" ? b.date : "",
+      account: IG_ACCOUNTS[b.account] ? b.account : "charlotte_wu",
+      title: typeof b.title === "string" ? b.title : "",
+      shots: (Array.isArray(b.shots) ? b.shots : [])
+        .filter((s) => s && typeof s === "object" && !Array.isArray(s))
+        .map((s) => ({
+          ...s,
+          id: s.id || uid(),
+          t: typeof s.t === "string" ? s.t : "",
+          label: typeof s.label === "string" ? s.label : "",
+          scene: typeof s.scene === "string" ? s.scene : "",
+          code: typeof s.code === "string" ? s.code : "",
+          done: !!s.done,
+        })),
     }));
   const _normLib = (arr) => (arr || [])
     .filter((x) => x && typeof x === "object" && !Array.isArray(x))
@@ -1861,6 +1883,278 @@ function IGToolbox() {
   );
 }
 
+// ─── IG 分鏡工作板（風格＋帳號配色＋日期 → 組完整生圖 prompt 一鍵複製；純本機組字串，不呼叫 Gemini、不吃額度） ───
+const SB_STYLES = {
+  illu:    { label: "①插畫風", text: "Soft hand-drawn illustration, gentle outlines, light watercolor shading, cozy storybook style, subtle sparkles" },
+  photo:   { label: "②寫實風", text: "Photorealistic macro photography, natural soft daylight, shallow depth of field, realistic textures" },
+  sketch:  { label: "③素描風", text: "Detailed pencil sketch, graphite on cream paper, fine cross-hatching, soft shading, monochrome with faint color wash" },
+  impress: { label: "④印象風", text: "Impressionist painting, visible loose brushstrokes, soft diffused light, dreamy painterly texture" },
+  mini:    { label: "⑤簡約風", text: "Minimalist style, clean composition, lots of negative space, muted flat colors, simple shapes, minimal detail, single clear subject, calm modern aesthetic" },
+};
+const SB_PALETTES = {
+  charlotte_wu:       "warm terracotta and cream tones, cheerful everyday mood",
+  charlottewu_write:  "ink-blue and cream tones, quiet calm desk mood",
+  charlotte_handmade: "soft purple and cream tones, warm handmade mood",
+  sororism:           "warm cream, gold and lavender palette, calm healing mood",
+};
+const SB_RULES = "Vertical 9:16 aspect ratio. No text, letters, numbers or logos anywhere in the image. If any person appears, show hands only, never the face. Clean, uncluttered composition.";
+const SB_STYLE_KEY = "dp-sb-style"; // 風格是裝置偏好，存 localStorage、不進同步資料
+// 貼上分鏡清單 → 拆成篇與格。header：「— 7/13｜手寫帳｜主題」；格：「0-3s 沾墨：scene（配色：…）」（配色段自動剝除，改用帳號固定配色）
+function sbParse(text) {
+  const acctMap = { "主帳": "charlotte_wu", "手寫帳": "charlottewu_write", "手作帳": "charlotte_handmade" };
+  const year = new Date().getFullYear();
+  const boards = []; let cur = null;
+  String(text || "").split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return;
+    if (/^[—–\-]/.test(line)) {
+      const parts = line.replace(/^[—–\-]+\s*/, "").split(/[｜|]/).map((s) => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        const m = parts[0].match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+        const date = m ? year + "-" + String(m[1]).padStart(2, "0") + "-" + String(m[2]).padStart(2, "0") : "";
+        const acc = acctMap[parts[1]] || (/soror/i.test(parts[1]) ? "sororism" : "charlotte_wu");
+        cur = { id: uid(), date, account: acc, title: parts.slice(2).join("｜") || parts[1], shots: [] };
+        boards.push(cur);
+      }
+      return;
+    }
+    if (!cur) return;
+    const sm = line.match(/^(\S+)\s+([^：:]+)[：:]\s*(.+)$/);
+    if (!sm) return;
+    const scene = sm[3].replace(/[（(]\s*配色\s*[：:][^）)]*[）)]\s*$/, "").trim();
+    cur.shots.push({ id: uid(), t: sm[1], label: sm[2].trim(), scene, done: false });
+  });
+  boards.forEach((b) => {
+    let n = 0;
+    b.shots.forEach((sh) => { sh.code = /^P\d+$/i.test(sh.t) ? sh.t.toUpperCase() : "S" + (++n); });
+  });
+  return boards.filter((b) => b.shots.length);
+}
+const sbFname = (b, sh) => (b.date ? b.date.slice(5).replace("-", "") : "0000") + "_" + (sh.code || "S0");
+const sbPrompt = (styleKey, b, sh) => {
+  const st = SB_STYLES[styleKey] || SB_STYLES.illu;
+  return st.text + ". " + sh.scene + ". Color palette: " + (SB_PALETTES[b.account] || SB_PALETTES.charlotte_wu) + ". " + SB_RULES;
+};
+// 內建：2026 7/13–8/6 這批分鏡（charlotte 2026/07/12 提供；之後的新清單用匯入框貼上即可）
+const SB_SEED_TEXT = `
+— 7/13｜手寫帳｜颱風天手寫｜張西語錄
+   0-3s 沾墨：extreme macro of a fountain pen nib dipping into ink, ink blooming, hand only
+   3-6s 落筆：over-the-shoulder top-down view of a pen making its first stroke on paper
+   6-13s 逐字寫：a hand writing four lines of characters in a notebook by a rainy window, soft daylight
+   13-16s 停一下：a writing hand pausing mid-line over the notebook
+   16-18s 落款：finished handwritten page laid flat by a window with rain outside
+— 7/14｜主帳｜星宇特調 藍→橘
+   0-2s 藍：close-up of a blue signature cocktail on an airplane tray table
+   2-4s 晃杯：swirling the glass in window light, ice cubes glowing
+   4-6s 橘：same glass now an orange drink, same angle
+   6-9s 並排：blue and orange drinks side by side on a tray
+— 7/15｜手作帳｜透明定價 $790
+   P1 封面：flat lay of a finished handmade crochet bag, showing stitch texture and drape
+   P3 材料：a single ball of yarn almost fully used up, held in a hand
+   P4 工時：crochet work in progress at night under a warm desk lamp
+   P5 那晚：a lopsided half-finished crochet piece with a seam ripper beside it
+— 7/15｜主帳｜Lawson×Coleman 傘
+   P1 未拆手持：a hand holding an unopened beige umbrella in packaging
+   P2 自動開閉：a beige umbrella opening with one-touch button, motion
+   P3 質感：macro of beige umbrella fabric and a small outdoor-brand logo
+   P4 遮光實測：an open umbrella casting a sharp shadow on the ground
+— 7/16｜Sororism｜水晶功效①
+   P2 白水晶：a clear quartz bead held in a hand before a meeting, calm
+   P3 粉晶：a rose quartz bead, gentle self-care mood
+   P4 紫水晶：an amethyst bead placed by a bedside at night
+   P5 黑曜石：a black obsidian bead, grounded steady feeling
+— 7/17｜Sororism｜開幕抽獎啟動
+   P2 獎品：a handmade crystal bracelet as a giveaway prize, gift mood
+— 7/18｜主帳｜山中湖 富之湖飯店
+   0-3s 清晨窗景：quiet lake seen from a hotel window at dawn
+   3-6s 逆富士：distant mountains turning from grey to color at sunrise, reflection on lake
+   6-9s 房間：cozy hotel room details in soft morning light
+— 7/18｜Sororism｜串水晶 BTS（已完成，如換風格再生）
+   0-3s 淨化：two cupped hands rinsing colorful crystal beads under a running tap, water droplets
+   3-6s 挑珠：many pastel crystal beads on a light wooden tray, one hand picking a bead
+   6-9s 穿線：close-up of two hands threading crystal beads onto a cord
+   9-12s 收尾：two hands tying the final knot of a crystal bracelet
+   12-15s 成品：a finished crystal bracelet spinning on a fingertip, soft sparkles
+— 7/19｜主帳｜離島通勤真心話
+   0-3s 候船：empty island ferry pier in the morning, handheld candid feel
+   3-8s 海：sea breeze and a distant boat, slow b-roll
+   8-14s 上班：walking toward a seaside community building, from behind, no children
+   14-20s 真心話：sitting down with a cup of tea looking out the window, hands only
+— 7/20｜主帳｜快閃台北
+   P3 抹茶蛋糕：a slice of matcha cake on a cafe table
+   P4 踩點：a lively city food street, various stops
+— 7/21｜手作帳｜紫色漸層格子包
+   0-3s 成品：finished purple gradient granny-square crochet bag, flat lay
+   3-12s 過程：hands crocheting granny squares, work in progress
+   12-20s 完成：hands weaving in the final yarn end of a crochet bag
+   20-27s 上身：the crochet bag worn over a shoulder in everyday outfit, no face
+   27-31s 針目：macro of purple gradient crochet stitches
+— 7/21｜Sororism｜水晶串亮相
+   P1 手鍊：flat lay of a first-batch handmade crystal bracelet
+   P2 逐顆：macro of crystal beads, freshly cleansed with water
+   P3 過程：a corner of hand-threading beads, resting overnight
+   P4 實戴：the bracelet worn on a wrist in everyday life
+— 7/22｜主帳｜撕布丁貼紙 ASMR
+   3-15s 撕貼紙：macro slow-motion of peeling a pudding-shaped sticker, hands only
+   15-25s 開布丁：peeling open a pudding cup lid, close-up
+— 7/23｜主帳｜唐吉訶德掃貨
+   P1 全覽：a shopping cart full of Japanese haul products, top view
+   P3 陷阱：many small-priced items laid out, adding up
+   P4 代買：a stack of apparel folded, shopping list feel
+— 7/23｜手寫帳｜寫壞的手帳頁
+   0-3s 塗改：open journal page with crossed-out words, over-the-shoulder top-down
+   3-9s 墨暈：macro of smudged ink and struck-through words on paper
+   9-15s 繼續：a hand continuing to write the next line despite the mistakes
+   15-20s 成品：full view of an imperfect but honest handwritten journal page
+— 7/24｜Sororism｜生命靈數配水晶
+   P3 靈數1-3：three crystal beads matched to numbers, soft arrangement
+   P4 靈數4-6：another trio of crystal beads, gentle layout
+   P5 靈數7-9：a final trio of crystal beads, calm styling
+— 7/25｜主帳｜一人公司六個工具
+   P1 封面：top-down flat lay of a few work tools on a tidy desk
+   P4 分工：six app-like icons arranged neatly, minimal
+— 7/25｜Sororism｜新品預告
+   P2 局部：close-up of a new product partly hidden, teaser mood
+   P3 材質：another angle showing material texture, teaser
+— 7/27｜Sororism｜七月回顧
+   P3 第一批：the first batch of handmade bracelets, cleansed and strung by hand
+— 7/29｜Sororism｜水晶保養
+   P3 月光：crystal bracelets by a window under full moonlight overnight
+— 7/30｜主帳｜行李秤重驚魂
+   0-3s 塞爆：an overstuffed carry-on suitcase barely closing
+   9-16s 隨身：a handheld luggage scale reading overweight
+   16-23s 救場：an airline counter, a bag being checked in
+— 7/31｜Sororism｜八月預告
+   P2 客製：a birthday turning into a personalized crystal bracelet
+   P3 香氛：a scented candle, mood and emotion
+— 8/1｜主帳｜成田皮克敏深夜散步
+   0-3s 夜街：empty Narita street at night
+   3-10s 手機：a phone screen showing a walking game while strolling, hand only
+   10-18s 繞圈：walking a loop route on a quiet night street
+   18-24s 便利店：a convenience store glowing at night, about to close
+— 8/2｜主帳｜館長用 AI
+   3-8s 不虧錢：a laptop screen with an AI chat (blurred text), planning mood
+   13-18s 不出事：hands reviewing a checklist on screen, careful mood
+— 8/3｜手寫帳｜目標 vs 任務 鋼筆版
+   P1 封面：handwritten quote in fountain pen on dark inky background, macro
+   P2 概念：handwritten notes explaining an idea, pen resting on the page
+   P3 應用一：a journal inner page with neat handwriting, calm desk
+   P4 應用二：fountain pen ink swatches and daily handwriting practice
+   P5 反思：a relaxed hand holding a fountain pen over an open notebook
+— 8/4｜Sororism｜客製訂單展示
+   P3 配色：crystal beads arranged by a color logic, thoughtful palette
+   P4 成品：macro of a finished custom crystal bracelet
+— 8/5｜主帳｜CLAUDE.md＋anti-style
+   P1 封面：a computer screen with two text files open (blurred), minimal desk
+   P3 檔案一：a document titled with personal principles, clean UI feel
+   P4 檔案二：a document listing a blacklist of unwanted phrases
+— 8/6｜Sororism｜香氣與情緒的科學
+   P2 科學：soft abstract of scent reaching a brain, dreamy
+   P3 對應：different scented candles matched to moods
+   P4 場景：a cozy candle-lit scene
+`;
+function SBBoards({ state, update }) {
+  const [styleKey, setStyleKey] = useState(() => {
+    try { const k = localStorage.getItem(SB_STYLE_KEY); return SB_STYLES[k] ? k : "illu"; } catch (e) { return "illu"; }
+  });
+  const [showDone, setShowDone] = useState(false);
+  const [bulk, setBulk] = useState("");
+  const [msg, setMsg] = useState("");
+  const boards = (state.sbBoards || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const pickStyle = (k) => { setStyleKey(k); try { localStorage.setItem(SB_STYLE_KEY, k); } catch (e) {} };
+  const flash = (t) => { setMsg(t); setTimeout(() => setMsg(""), 4500); };
+  const copyText = async (t, okMsg) => {
+    let ok = false;
+    try { await navigator.clipboard.writeText(t); ok = true; }
+    catch (e) {
+      try { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); ok = true; } catch (e2) {}
+    }
+    flash(ok ? okMsg : "這個環境擋複製，請手動選取文字");
+  };
+  const setShot = (bid, sid, patch) => {
+    update({ sbBoards: (state.sbBoards || []).map((b) => b.id !== bid ? b : { ...b, shots: b.shots.map((s) => (s.id === sid ? { ...s, ...patch } : s)) }) });
+  };
+  const delBoard = async (bid) => {
+    if (!(await window.appConfirm("刪除這篇分鏡？（不影響 IG 排程與行事曆）"))) return;
+    update({ sbBoards: (state.sbBoards || []).filter((b) => b.id !== bid) });
+  };
+  const copyBoard = (b) => {
+    const head = "請幫我生成 " + b.shots.length + " 張圖。規則：每張直式 9:16、圖內不要出現任何文字、有人物一律只拍手不露臉、畫面乾淨。一次生一張、依序完成，每張生好後標上我給的檔名。\n\n";
+    const body = b.shots.map((sh, i) => (i + 1) + ". 檔名 " + sbFname(b, sh) + "（" + sh.t + " " + sh.label + "）\n" + sbPrompt(styleKey, b, sh)).join("\n\n");
+    copyText(head + body, "已複製整篇（" + b.shots.length + " 張），開 GPT 對話貼上");
+  };
+  const doImport = () => {
+    const parsed = sbParse(bulk);
+    if (!parsed.length) { flash("看不懂這段清單：每篇要以「—」開頭、每格是「編號 名稱：英文場景」"); return; }
+    const seen = new Set((state.sbBoards || []).map((b) => b.date + "|" + b.title));
+    const fresh = parsed.filter((b) => !seen.has(b.date + "|" + b.title));
+    update({ sbBoards: [...(state.sbBoards || []), ...fresh] });
+    setBulk("");
+    flash("匯入 " + fresh.length + " 篇" + (parsed.length - fresh.length > 0 ? "（略過重複 " + (parsed.length - fresh.length) + " 篇）" : ""));
+  };
+  const loadSeed = () => { setBulk(SB_SEED_TEXT.trim()); flash("已帶入 7/13–8/6 清單，按「解析匯入」加進工作板"); };
+  const chip = { display: "inline-block", padding: "1px 8px", borderRadius: 9, fontSize: 12, background: "var(--card2)", border: "1px solid var(--line)" };
+  const todo = boards.reduce((n, b) => n + b.shots.filter((s) => !s.done).length, 0);
+  return (
+    <details className="dp-bulk">
+      <summary>🎬 分鏡工作板（{(SB_STYLES[styleKey] || SB_STYLES.illu).label}・待生 {todo} 張）</summary>
+      <p className="dp-import-sub">
+        選風格 → 展開該篇 → 「複製整篇」貼給 GPT 生圖 → 存進素材庫（檔名照標示的「日期_格號」）→ 勾掉完成。
+        prompt 已自動組好：風格＋場景＋該帳號固定配色＋9:16／無文字／只拍手不露臉。全程本機組字串，<b>不呼叫 Gemini、不吃額度</b>。
+      </p>
+      <div className="dp-ai-bar" style={{ flexWrap: "wrap" }}>
+        {Object.entries(SB_STYLES).map(([k, v]) => (
+          <button key={k} className={"dp-btn" + (k === styleKey ? " solid" : "")} onClick={() => pickStyle(k)}>{v.label}</button>
+        ))}
+        <label style={{ fontSize: 12, cursor: "pointer" }}>
+          <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> 顯示已完成
+        </label>
+      </div>
+      {msg && <p className="dp-hint">{msg}</p>}
+      {boards.filter((b) => showDone || b.shots.some((s) => !s.done)).map((b) => {
+        const acc = igAccOf(b.account);
+        const left = b.shots.filter((s) => !s.done).length;
+        return (
+          <details key={b.id} style={{ margin: "8px 0", border: "1px solid var(--line)", borderRadius: 11, padding: "6px 10px", background: "var(--card2)" }}>
+            <summary style={{ cursor: "pointer" }}>
+              <b>{b.date ? b.date.slice(5).replace("-", "/") : "未定"}</b>
+              <span style={{ color: acc.color, margin: "0 6px" }}>● {acc.label}</span>
+              {b.title}
+              <span style={{ ...chip, marginLeft: 6 }}>{left > 0 ? "待生 " + left + "/" + b.shots.length : "✅ 完成"}</span>
+            </summary>
+            <div className="dp-ai-bar" style={{ margin: "8px 0" }}>
+              <button className="dp-btn solid" onClick={() => copyBoard(b)}>複製整篇給 GPT</button>
+              <button className="dp-btn" onClick={() => delBoard(b.id)}>刪除這篇</button>
+            </div>
+            {b.shots.map((sh) => (
+              <div key={sh.id} style={{ borderTop: "1px dashed var(--line)", padding: "6px 0", opacity: sh.done ? .55 : 1 }}>
+                <label style={{ cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!sh.done} onChange={(e) => setShot(b.id, sh.id, { done: e.target.checked })} />
+                  {" "}<b>{sbFname(b, sh)}</b>　{sh.t} {sh.label}
+                </label>
+                <button className="dp-btn" style={{ marginLeft: 8, padding: "1px 10px", fontSize: 12 }}
+                  onClick={() => copyText(sbPrompt(styleKey, b, sh), "已複製 " + sbFname(b, sh) + " 的 prompt")}>複製這格</button>
+                <div className="dp-hint" style={{ margin: "3px 0 0 22px" }}>{sh.scene}</div>
+              </div>
+            ))}
+          </details>
+        );
+      })}
+      {boards.length === 0 && <p className="dp-hint">還沒有分鏡：按下面「帶入內建 7/13–8/6 清單」再按「解析匯入」，或貼上新的分鏡清單。</p>}
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontSize: 13 }}>＋ 匯入分鏡清單</summary>
+        <textarea className="dp-ta" rows={5} style={{ marginTop: 6 }}
+          placeholder={"貼上分鏡清單，格式：\n— 7/13｜手寫帳｜主題\n   0-3s 沾墨：extreme macro of ...（配色：...）"}
+          value={bulk} onChange={(e) => setBulk(e.target.value)} />
+        <div className="dp-ai-bar">
+          <button className="dp-btn solid" onClick={doImport}>解析匯入</button>
+          <button className="dp-btn" onClick={loadSeed}>帶入內建 7/13–8/6 清單</button>
+        </div>
+      </details>
+    </details>
+  );
+}
+
 // ─── 候選池匯出資料夾記憶（File System Access API；資料夾把手只能存 IndexedDB） ───
 const POOL_DIR_KEY = "igPoolDir";
 function poolDb() {
@@ -2217,6 +2511,8 @@ function IG({ state, update }) {
       </details>
 
       <IGCandidates state={state} update={update} />
+
+      <SBBoards state={state} update={update} />
 
       <IGToolbox />
 
