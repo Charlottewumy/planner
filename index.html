@@ -72,6 +72,8 @@ const postTypeOf = (k) => POST_TYPES[k] || k || "貼文";
 const scopeLabel = (sc) => sc === "work" ? "公務" : "私人"; // 未分類視為私人
 
 const STORAGE_KEY = "director-planner-v1";
+const LAST_BACKUP_KEY = "director-planner-lastbackup-v1"; // 記錄最後一次下載/複製備份的時間戳，供備份提醒判斷
+const BACKUP_REMIND_DAYS = 7; // 距上次備份超過幾天就跳提醒
 const CLOUD_KEY   = "director-planner-cloud-v1";
 const EVENTS_KEY  = "director-planner-events-shared-v1"; // 舊版曾把行事曆拆出，載入時併回，避免遺失
 
@@ -431,6 +433,7 @@ function App() {
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("today");
   const [saveErr, setSaveErr] = useState(false); // 本機存檔失敗警告
+  const [backupDue, setBackupDue] = useState(false); // 太久沒備份提醒（琥珀色，可關閉）
   const [online, setOnline] = useState(navigator.onLine); // 斷網保底：連線狀態
 
   // ── 自訂確認彈窗／提示條：取代原生 window.confirm，供 window.appConfirm / window.appToast 呼叫 ──
@@ -550,6 +553,14 @@ function App() {
         } catch (e) {}
       }
       setState(sanitizeState(st));
+      // 備份提醒：只有手帳裡真的有資料、且距上次備份超過門檻（或從未備份）才提醒，全新空手帳不打擾
+      try {
+        const b = await window.storage.get(LAST_BACKUP_KEY);
+        const last = b && b.value ? Number(b.value) : 0;
+        const overdue = !last || (Date.now() - last) > BACKUP_REMIND_DAYS * 864e5;
+        const hasData = st && typeof st === "object" && Object.keys(st).some((k) => Array.isArray(st[k]) && st[k].length > 0);
+        setBackupDue(overdue && hasData);
+      } catch (e) {}
       setLoaded(true);
     })();
   }, []);
@@ -643,7 +654,7 @@ function App() {
     err: "☁️ ⚠ 同步失敗（資料仍存在本機）",
   };
 
-  const update = (patch) => setState((s) => ({ ...s, ...patch }));
+  const update = (patch) => { setState((s) => ({ ...s, ...patch })); if (patch && "igPosts" in patch) scheduleAutoExport(patch.igPosts); };
   // 還原時也過濾，防止惡意備份檔案帶入非預期欄位
   const restoreAll = (data) => setState(sanitizeState(data));
   // 從雲端還原：把雲端資料裡的縮圖佔位符換回本機既有的圖（縮圖只留本機，不上雲端）
@@ -675,6 +686,14 @@ function App() {
       {saveErr && (
         <div className="dp-savewarn" role="alert">
           ⚠️ 資料儲存失敗——瀏覽器空間可能已滿。剛才的變更<b>沒有</b>存進本機！請立刻到「備份」分頁下載備份檔，再刪除一些舊資料或縮圖後繼續使用。
+        </div>
+      )}
+
+      {backupDue && !saveErr && (
+        <div className="dp-backupwarn" role="status">
+          <span>🗂️ 提醒：距離上次備份已超過 {BACKUP_REMIND_DAYS} 天。資料只存在這台裝置，建議下載一份備份保平安。</span>
+          <button className="dp-backupwarn-go" onClick={() => { setTab("backup"); setBackupDue(false); }}>去備份</button>
+          <button className="dp-backupwarn-x" onClick={() => setBackupDue(false)} aria-label="關閉提醒">✕</button>
         </div>
       )}
 
@@ -1826,6 +1845,55 @@ Double Tap 規則：
 - 其他句子保持原樣，不要整篇重寫
 
 請輸出改寫後的完整腳本，並標出新增的 Repeater Line。請用繁體中文回答。` },
+  { id: "p9", name: "09｜開箱輪播生圖指令（GPT生圖）", use: "產出可貼給 GPT 生「8 格戰利品輪播圖」的指令", when: "有商品/戰利品實拍照、要做輪播開箱（照片為主）",
+    tip: "把商品實拍照一起丟給會生圖的 GPT；中文字若生歪就重生那張，或留白自己用 Canva 疊字。",
+    slots: [
+      { k: "item",  label: "商品／作品一句話", ph: "例：東京買的歐根紗刺繡包" },
+      { k: "hook",  label: "封面 hook 一句", ph: "例：在巧克力店買的不是巧克力，是一個包" },
+      { k: "color", label: "色系", ph: "例：米白＋可可棕" },
+      { k: "facts", label: "必守事實（查證過的規格）", ta: true, ph: "把查證好的規格/售價列這；沒把握的數字寫『留白』" },
+    ],
+    tpl: `你是我的 IG 視覺設計師。我要做一則 8 張的 Instagram 輪播，介紹{item}。我會附上實拍照，請以照片為主體設計每張。
+
+整體風格：直式 4:5（1080×1350）；清爽文青、留白多、日系雜誌感；底色呼應主角色系{color}；疊字一律繁體中文（禁簡體）、無襯線、字大好讀；八張像同一套。
+
+逐張分鏡與疊字：
+1. 封面｜最有反差或懸念的主視覺＋大字「{hook}」，右下小字「往左滑 →」。
+2. 解謎/重點卡：一句關鍵字。
+3. 商品全貌/logo：一句介紹。
+4. 細節特寫：一句描述。
+5. 冷知識/反差字卡：一句。
+6. 品牌或製作故事：三行重點。
+7. 我的實際用法／情境：疊字「我拿它＿＿＿」（留白我填）。
+8. 收尾 CTA：一句互動提問＋一行補述。
+
+必守事實（不可竄改、不可誇大）：{facts}。禁療效與改運宣稱，原創不抄他人。
+
+輸出：一張一張生，每張生完先給我看確認再下一張；中文字歪就重生那張或留白我自己疊。` },
+  { id: "p10", name: "10｜Reels 封面字卡生圖指令（GPT生圖）", use: "產出 Reels「封面＋疊字卡」指令；影片自己剪", when: "有直式影片要做 Reels（手作過程、開箱動作、ASMR）",
+    tip: "GPT 只生封面和字卡、不是影片；長毛片用 CapCut／剪映『變速』剪成 15–20 秒縮時。手作記得讓黑貓 Charlotte's 布標入鏡。",
+    slots: [
+      { k: "item",  label: "商品／作品一句話", ph: "例：紫色漸層格子包" },
+      { k: "hook",  label: "封面 hook 一句", ph: "例：深紫接淺紫那段最怕跳色" },
+      { k: "color", label: "色系", ph: "例：深紫→薰衣草→米白" },
+      { k: "brand", label: "品牌／導流帳號", ph: "例：麥的鉤織日記／@charlotte._handmade" },
+      { k: "facts", label: "必守事實", ta: true, ph: "原創作品；查證過的規格；沒把握的線材/工時/售價一律留白" },
+    ],
+    tpl: `你是我的 IG 視覺設計師。我要做一支{item}的 Reels，請幫我生「封面圖」和幾張「疊字卡」。我會附實拍照，請以照片為主體。
+
+整體風格：直式 9:16（1080×1920），上下各留 15% 安全空白；色系呼應{color}；疊字繁體中文（禁簡體）、字大好讀；全部一致。品牌：{brand}。
+
+要生的圖：
+1. 封面（最重要）：用最好看的成品照＋hook 大字「{hook}」，右下小字「過程 →」。
+2. 字卡 A：一句過程描述。
+3. 字卡 B（留白放我的特寫照）：一句重點疊字。
+4. 字卡 C 收尾導流：放布標/CTA 畫面＋疊字「私訊 {brand}」＋一行小字「留言暗號」。
+
+必守事實：{facts}。禁療效與改運宣稱，原創不抄他人。
+
+提醒：GPT 生的是靜態封面和字卡，不是影片本身；影片請把直式毛片用 CapCut／剪映變速剪成 15–20 秒縮時。
+
+輸出：一張一張生，生完先給我看再下一張；中文字歪就重生或留白我自己疊。` },
 ];
 
 function IGToolbox() {
@@ -2205,6 +2273,51 @@ async function poolDirSet(h) {
   } catch (e) { return false; }
 }
 
+// ─── IG 現行進度：四帳排程單一真相，自動寫固定檔 ig_現行進度.json 給每日 8 點任務讀（2026-07-21） ───
+async function autoExportSchedule(posts, opts) {
+  opts = opts || {};
+  if (!window.showDirectoryPicker) {
+    if (opts.pick && window.appToast) window.appToast("這個環境不能直接寫資料夾（手機／file://）；請在電腦版 Edge 開 App 再匯出");
+    return;
+  }
+  try {
+    let dir = await poolDirGet();
+    if (dir) {
+      let perm = await dir.queryPermission({ mode: "readwrite" });
+      if (perm !== "granted" && opts.pick) perm = await dir.requestPermission({ mode: "readwrite" });
+      if (perm !== "granted") dir = null;
+    }
+    if (!dir) {
+      if (!opts.pick) return;
+      if (window.appToast) window.appToast("第一次使用：請選專案裡的「IG排程匯入」資料夾（只要選這一次，之後改排程就自動同步）");
+      dir = await window.showDirectoryPicker({ id: "ig-pool", mode: "readwrite" });
+      await poolDirSet(dir);
+    }
+    const active = (posts || []).filter((p) => p && p.status !== "已發");
+    const payload = {
+      schemaVersion: 1,
+      source: "director-planner",
+      exportedAt: todayISO(),
+      posts: active.map((p) => ({ account: p.account, type: p.type, date: p.date, topic: p.topic, detail: p.detail || "", status: p.status || "草稿" })),
+    };
+    const fh = await dir.getFileHandle("ig_現行進度.json", { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(payload, null, 2));
+    await w.close();
+    try { localStorage.setItem("director-planner-lastschedexport-v1", new Date().toISOString()); } catch (e) {}
+    if (window.appToast) window.appToast("✓ 現行進度已同步（" + active.length + " 則待發）→ ig_現行進度.json", "sync", 3500);
+  } catch (e) {
+    if (e && e.name === "AbortError") return;
+    if (opts.pick && window.appToast) window.appToast("匯出現行進度失敗，請再試一次或用電腦版 Edge");
+  }
+}
+let _schedExportTimer = null;
+function scheduleAutoExport(posts) {
+  try { clearTimeout(_schedExportTimer); } catch (e) {}
+  const snap = posts;
+  _schedExportTimer = setTimeout(function () { autoExportSchedule(snap, { pick: false }); }, 800);
+}
+
 // ─── IG 候選池（四域轉譯所產生的構想；charlotte 選了日期按「排入」才會進行事曆） ───
 function IGCandidates({ state, update }) {
   const list = state.igCandidates || [];
@@ -2551,6 +2664,11 @@ function IG({ state, update }) {
           {msg && <span className="dp-hint">{msg}</span>}
         </div>
       </details>
+
+      <div className="dp-ai-bar" style={{ marginTop: 8 }}>
+        <button className="dp-btn" onClick={() => autoExportSchedule(state.igPosts, { pick: true })}>⬇ 匯出現行進度（給每日任務）</button>
+        <span className="dp-hint">四帳排程會自動寫進「IG排程匯入/ig_現行進度.json」，每日 8 點任務只讀這個檔。第一次按這顆選一次「IG排程匯入」資料夾即可，之後改排程就自動同步。</span>
+      </div>
 
       <IGCandidates state={state} update={update} />
 
@@ -5321,12 +5439,13 @@ function Backup({ state, restoreAll }) {
       a.href = url; a.download = `館長手帳備份-${stamp()}.json`;
       document.body.appendChild(a); a.click();
       document.body.removeChild(a); URL.revokeObjectURL(url);
+      try { localStorage.setItem(LAST_BACKUP_KEY, String(Date.now())); } catch (e2) {} // 記下備份時間，清除提醒
       setMsg("已下載備份檔，請妥善保存。");
     } catch (e) { setMsg("下載失敗，可改用「複製備份碼」保存。"); }
   };
 
   const copyCode = async () => {
-    try { await navigator.clipboard.writeText(payload()); setMsg("備份碼已複製！貼到記事本或傳給自己保存。"); }
+    try { await navigator.clipboard.writeText(payload()); try { localStorage.setItem(LAST_BACKUP_KEY, String(Date.now())); } catch (e2) {} setMsg("備份碼已複製！貼到記事本或傳給自己保存。"); }
     catch (e) { setShowCode(true); setMsg("請手動全選下方備份碼複製。"); }
   };
 
@@ -5634,6 +5753,9 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-page{flex:1;min-width:0;padding:30px clamp(16px,4vw,52px) 60px}
 .dp-loading{padding:80px;text-align:center;color:var(--muted);font-size:16px}
 .dp-savewarn{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9999;max-width:min(92vw,560px);background:#B3402A;color:var(--card2);padding:11px 18px;font-size:13.5px;font-weight:600;line-height:1.55;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.dp-backupwarn{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9998;max-width:min(92vw,560px);display:flex;align-items:center;gap:10px;background:#E0A458;color:#3A2A12;padding:10px 14px;font-size:13px;font-weight:600;line-height:1.5;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+.dp-backupwarn-go{flex:none;background:#3A2A12;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
+.dp-backupwarn-x{flex:none;background:transparent;border:none;color:#3A2A12;font-size:15px;font-weight:700;cursor:pointer;padding:2px 4px;line-height:1}
 .dp-savewarn b{font-weight:900;text-decoration:underline}
 .dp-offline-bar{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9997;background:var(--gold);color:var(--card2);padding:6px 16px;border-radius:0 0 10px 10px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.2)}
 .dp-quota{background:#FBF6EC;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:16px}
