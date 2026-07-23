@@ -3148,6 +3148,15 @@ function fetchUrlTO(u, ms) {
   const timer = setTimeout(() => ctrl.abort(), ms);
   return fetch(u, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
 }
+// 辨識「防機器人驗證頁／登入牆／付費牆」——讀到的不是正文而是這種攔阻頁時，直接講清楚要改貼全文
+const BLOCK_TITLE_RE = /just a moment|attention required|access denied|security check|please wait|請稍候|驗證中|安全性驗證/i;
+const BLOCK_BODY_RE = /performing security verification|checking (if the site connection is secure|your browser)|enable javascript (and|&|、|and enable )?cookies|verify (that )?you are (a )?human|you are not a bot|needs to review the security of your connection|cf-browser-verification|人機驗證|請完成(人機|安全性?)?驗證|請先?登入(才能|後)?|log ?in to (continue|view|read)|sign in to (continue|view|read)|members? only|patrons? only|for patrons|訂閱後即可|付費.{0,4}(閱讀|觀看|解鎖)/i;
+// 短內容才用 body 特徵判定，避免長篇正文剛好提到「登入／captcha」被誤殺
+function looksBlocked(title, text) {
+  if (BLOCK_TITLE_RE.test(String(title || ""))) return true;
+  const b = String(text || "");
+  return b.length < 800 && BLOCK_BODY_RE.test(b);
+}
 // 三級讀取的前兩級：直接讀 → 備援讀（第三級＝人工貼全文，走原本的文字欄）
 async function readUrlSmart(href) {
   let out = null;
@@ -3157,7 +3166,7 @@ async function readUrlSmart(href) {
       const ct = (res.headers.get("content-type") || "").toLowerCase();
       if (ct.includes("text/html")) {
         const art = htmlToArticle(await res.text());
-        if (art.text.length >= 40) out = { readStatus: "direct", ...art };
+        if (art.text.length >= 40 && !looksBlocked(art.title, art.text)) out = { readStatus: "direct", ...art };
       } else if (ct.includes("text/plain") || ct.includes("markdown")) {
         out = { readStatus: "direct", title: "", author: "", published: "", text: squeezeText(await res.text()) };
       }
@@ -3173,6 +3182,10 @@ async function readUrlSmart(href) {
     const bodyIdx = md.indexOf("Markdown Content:");
     out = { readStatus: "fallback", title: m ? m[1].trim() : "", author: "", published: "",
       text: squeezeText(bodyIdx >= 0 ? md.slice(bodyIdx + 17) : md) };
+  }
+  // 讀到的其實是「防機器人驗證頁／登入牆／付費牆」而非正文——講清楚，別讓她以為是自己弄錯
+  if (looksBlocked(out.title, out.text)) {
+    throw new Error("這個網站需登入或有防機器人驗證（Cloudflare／付費牆），無法自動讀取");
   }
   let truncated = false;
   if (out.text.length > URL_READ.MAX_CHARS) { out.text = out.text.slice(0, URL_READ.MAX_CHARS); truncated = true; }
