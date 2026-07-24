@@ -63,6 +63,36 @@ const IG_ACCOUNTS = {
 
 const POST_TYPES = { carousel: "輪播", reels: "Reels", story: "限動" };
 
+// ─── 推薦發文時間（2026-07-25 新增）───────────────────────────
+// 依據：QSearch 2026 台灣 450 萬則貼文數據（平日午休 11–14、週三晚 19–21、
+// 週六 12:00 為全週最強午休時段、週六晚高峰 21:00）＋ Reels 佳時段 09–11 / 19–21。
+// 三個個人帳各自錯開，避免同日互搶；Sororism 沿用既有 二/四 20:30・六 12:00 節奏。
+const IG_REC_TIME = {
+  // [日,一,二,三,四,五,六]
+  charlotte_wu:      { reels:   ["20:00","20:00","20:00","20:00","20:00","20:00","21:00"],
+                       default: ["12:00","12:30","13:00","12:30","12:30","12:30","12:00"] },
+  charlottewu_write: { reels:   ["20:30","20:30","20:30","20:00","20:30","20:30","21:00"],
+                       default: ["20:30","20:30","20:30","20:00","20:30","20:30","21:00"] },
+  charlotte_handmade:{ reels:   ["11:00","20:00","20:00","20:00","20:00","20:00","12:00"],
+                       default: ["11:00","12:30","13:00","12:30","12:30","12:30","12:00"] },
+  sororism:          { reels:   ["12:00","20:30","20:30","20:30","20:30","20:30","12:00"],
+                       default: ["12:00","20:30","20:30","20:30","20:30","20:30","12:00"] },
+};
+const WD_TW = ["日","一","二","三","四","五","六"];
+function recTimeOf(account, type, dateISO) {
+  if (!dateISO) return "";
+  const t = IG_REC_TIME[account] || IG_REC_TIME.charlotte_wu;
+  const row = (type === "reels" ? t.reels : t.default) || t.default;
+  const d = new Date(dateISO + "T00:00:00");
+  if (isNaN(d)) return "";
+  return row[d.getDay()] || "";
+}
+function wdOf(dateISO) {
+  if (!dateISO) return "";
+  const d = new Date(dateISO + "T00:00:00");
+  return isNaN(d) ? "" : WD_TW[d.getDay()];
+}
+
 // 安全取值：資料若帶到未知分類／帳號／型態，回退到中性值而不讓整頁崩潰
 const FALLBACK_CAT = { label: "其他", dot: "var(--muted)", soft: "#eceae5" };
 const catOf      = (k) => CATS[k] || FALLBACK_CAT;
@@ -2298,7 +2328,13 @@ async function autoExportSchedule(posts, opts) {
       schemaVersion: 1,
       source: "director-planner",
       exportedAt: todayISO(),
-      posts: active.map((p) => ({ account: p.account, type: p.type, date: p.date, topic: p.topic, detail: p.detail || "", status: p.status || "草稿" })),
+      posts: active.map((p) => ({
+        account: p.account, type: p.type, date: p.date, topic: p.topic,
+        time: p.time || recTimeOf(p.account, p.type, p.date),
+        timeIsRecommended: !p.time,
+        weekday: wdOf(p.date),
+        detail: p.detail || "", status: p.status || "草稿",
+      })),
     };
     const fh = await dir.getFileHandle("ig_現行進度.json", { create: true });
     const w = await fh.createWritable();
@@ -2602,6 +2638,19 @@ function IG({ state, update }) {
   };
   const setDetail = (id, detail) =>
     update({ igPosts: state.igPosts.map((p) => (p.id === id ? { ...p, detail } : p)) });
+  // 主題可編輯（2026-07-25 新增）：同步更新行事曆那筆的標題，兩邊不會對不上
+  const setTopic = (id, topic) => {
+    const post = state.igPosts.find((p) => p.id === id);
+    const eid = post && post.eventId;
+    const accLabel = post ? (IG_ACCOUNTS[post.account] || IG_ACCOUNTS.charlotte_wu).label : "";
+    update({
+      igPosts: state.igPosts.map((p) => (p.id === id ? { ...p, topic } : p)),
+      events: eid ? state.events.map((e) => (e.id === eid ? { ...e, title: "IG・" + accLabel + "：" + topic } : e)) : state.events,
+    });
+  };
+  // 發布時間可覆寫（2026-07-25 新增）：留空＝用推薦時間
+  const setTime = (id, time) =>
+    update({ igPosts: state.igPosts.map((p) => (p.id === id ? { ...p, time } : p)) });
   const setPostDate = (id, date) => {
     if (!date) return;
     const post = state.igPosts.find((p) => p.id === id);
@@ -2722,9 +2771,14 @@ function IG({ state, update }) {
           <div key={p.id} className="dp-igcard-wrap">
             <div className="dp-igcard" style={{ borderLeftColor: (IG_ACCOUNTS[p.account] || IG_ACCOUNTS.charlotte_wu).color }}
               onClick={() => setOpenId(openId === p.id ? null : p.id)}>
-              <div className="dp-ig-date">{p.date.slice(5)}</div>
+              <div className="dp-ig-date">{p.date.slice(5)}<span className="dp-ig-wd">{wdOf(p.date)}</span></div>
               <div className="dp-ig-mid">
-                <div className="dp-ig-acc">{(IG_ACCOUNTS[p.account] || IG_ACCOUNTS.charlotte_wu).label}</div>
+                <div className="dp-ig-acc">
+                  {(IG_ACCOUNTS[p.account] || IG_ACCOUNTS.charlotte_wu).label}
+                  <span className={"dp-ig-time" + (p.time ? " own" : "")} title={p.time ? "你自己設定的發布時間" : "依帳號與星期推薦的發布時間（可在展開後改）"}>
+                    🕐 {p.time || recTimeOf(p.account, p.type, p.date)}{p.time ? "" : " 推薦"}
+                  </span>
+                </div>
                 <div className="dp-ig-topic">
                   <span className="dp-ig-type">{postTypeOf(p.type)}</span> {p.topic}
                 </div>
@@ -2735,11 +2789,26 @@ function IG({ state, update }) {
             </div>
             {openId === p.id && (
               <div className="dp-igdetail">
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>主題</div>
+                  <input
+                    type="text"
+                    value={p.topic}
+                    placeholder="貼文主題（可直接改）"
+                    onChange={(e) => setTopic(p.id, e.target.value)}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "6px 9px", border: "1px solid var(--line)", borderRadius: 8, font: "inherit" }}
+                  />
+                  <span className="dp-hint">改主題會一起更新行事曆上那筆的標題</span>
+                </div>
                 <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 600 }}>發布日期</span>
                   <input type="date" value={p.date} onChange={(e) => setPostDate(p.id, e.target.value)} style={{ padding: "4px 8px", border: "1px solid var(--line)", borderRadius: 8, font: "inherit" }} />
-                  <span className="dp-hint">改日期會一起移動行事曆那筆、並自動同步給每日任務</span>
+                  <span style={{ fontWeight: 600, marginLeft: 4 }}>發布時間</span>
+                  <input type="time" value={p.time || ""} onChange={(e) => setTime(p.id, e.target.value)} style={{ padding: "4px 8px", border: "1px solid var(--line)", borderRadius: 8, font: "inherit" }} />
+                  {!p.time && <span className="dp-hint">留空＝用推薦時間 {recTimeOf(p.account, p.type, p.date)}（{wdOf(p.date)}・{postTypeOf(p.type)}）</span>}
+                  {p.time && <button className="dp-btn" onClick={() => setTime(p.id, "")}>改回推薦 {recTimeOf(p.account, p.type, p.date)}</button>}
                 </div>
+                <div className="dp-hint" style={{ marginBottom: 8 }}>改日期／時間會一起移動行事曆那筆、並自動同步給每日任務</div>
                 <div className="dp-igdetail-h">當天詳細內容 · 分鏡 / 腳本</div>
                 <textarea
                   className="dp-ta"
@@ -2766,7 +2835,7 @@ function IG({ state, update }) {
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", borderBottom: "1px dashed #e6e5e0", fontSize: 13.5 }}>
               <span className="dp-catdot" style={{ background: igAccOf(p.account).color }} />
               <b style={{ minWidth: 44 }}>{p.date.slice(5)}</b>
-              <span style={{ flex: 1 }}><span className="dp-ig-type">{postTypeOf(p.type)}</span> {p.topic}</span>
+              <span style={{ flex: 1 }}><span className="dp-ig-type">{postTypeOf(p.type)}</span> {p.topic}{p.time ? <span className="dp-hint"> · {p.time}</span> : null}</span>
               <button className="dp-btn" onClick={() => cycle(p.id)}>改回未發</button>
               <button className="dp-x" onClick={() => del(p.id)}>✕</button>
             </div>
@@ -5980,6 +6049,9 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-ig-acc{font-size:12px;color:#a1a19f;font-weight:500}
 .dp-ig-topic{font-size:14.5px;margin-top:2px}
 .dp-ig-type{font-size:11px;font-weight:500;background:#f2f1ed;padding:1px 8px;border-radius:8px;color:#7a7974}
+.dp-ig-wd{display:inline-block;margin-left:4px;font-size:11px;opacity:.6;font-weight:400}
+.dp-ig-time{display:inline-block;margin-left:8px;font-size:11px;padding:1px 7px;border-radius:6px;background:#f2f1ed;color:#8a8880;font-weight:400;white-space:nowrap}
+.dp-ig-time.own{background:#E4ECE3;color:#4A6B52;font-weight:500}
 .dp-status{font-size:12px;font-weight:500;padding:5px 12px;border-radius:8px;border:1px solid transparent}
 .dp-status.草稿{background:#eceae5;color:#84847e}
 .dp-status.待發{background:#f2f1ed;color:#c08532}
