@@ -953,11 +953,11 @@ function HabitTracker({ state, update }) {
       <div className="dp-hab-note">今天的我，已用一張回顧與一項完成，重新接住自己的節奏。</div>
       {rows.map((r) => (
         <div key={r.key} className="dp-hab-row">
-          <div className="dp-hab-name">
+          <div className="dp-hab-name" title={r.name}>
             <span className="dp-hab-dot" style={{ background: r.color }} />
-            {r.name}
+            <span className="dp-hab-nt">{r.name}</span>
           </div>
-          <div className="dp-hab-strip">
+          <div className="dp-hab-strip" ref={(el) => { if (el) el.scrollLeft = el.scrollWidth; }}>
             {r.cells.map((c, i) => (
               <i key={i} className={"dp-hab-c " + c + (i === r.cells.length - 1 ? " td" : "")} />
             ))}
@@ -6047,12 +6047,13 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 /* 習慣追蹤器（原子習慣：綠＝完成／紅＝錯過／灰＝不適用；56 天一條） */
 .dp-hab{margin:0 0 18px;padding:12px 13px 10px;background:var(--card2);border:1px solid var(--hair);border-radius:8px}
 .dp-hab-note{background:#faf4e7;border-left:2px solid var(--gold);border-radius:0 4px 4px 0;padding:8px 12px;font-size:13px;color:#6b5324;line-height:1.6;margin-bottom:11px;letter-spacing:.01em}
-.dp-hab-row{display:flex;align-items:center;gap:9px;margin-bottom:7px}
-.dp-hab-name{font-size:12.5px;width:104px;flex:0 0 auto;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
+.dp-hab-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.dp-hab-name{font-size:12.5px;width:80px;flex:0 0 auto;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dp-hab-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.dp-hab-nt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dp-hab-strip{display:flex;gap:2px;overflow-x:auto;padding-bottom:2px;flex:1 1 auto;min-width:0;scrollbar-width:none;-ms-overflow-style:none}
 .dp-hab-strip::-webkit-scrollbar{display:none}
-.dp-hab-c{display:inline-block;width:8px;height:16px;border-radius:2px;background:#e6e5e0;flex:0 0 auto}
+.dp-hab-c{display:inline-block;width:11px;height:22px;border-radius:3px;background:#e6e5e0;flex:0 0 auto}
 .dp-hab-c.g{background:var(--brand)}
 .dp-hab-c.r{background:#f0c3ae}
 .dp-hab-c.f{background:transparent}
@@ -6067,7 +6068,7 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-hab-add{font-size:12px;color:var(--brand)}
 .dp-hab-in{border:1px solid var(--line);border-radius:4px;padding:3px 7px;font-size:12.5px;background:var(--card2);min-width:180px}
 .dp-hab-lg{font-size:11px;color:var(--sub);margin-left:auto;display:flex;align-items:center;gap:3px;white-space:nowrap}
-.dp-hab-lg .dp-hab-c{width:8px;height:10px;margin-right:3px}
+.dp-hab-lg .dp-hab-c{width:9px;height:11px;border-radius:2px;margin-right:3px}
 .dp-hab-ok{font-size:11px;color:var(--brand);margin-left:6px}
 .dp-hab-qa{display:flex;gap:5px;align-items:center;padding:4px 0 8px 16px}
 .dp-hab-qa .dp-hab-in{flex:1 1 auto;min-width:0}
