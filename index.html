@@ -128,6 +128,8 @@ const blankState = {
   supplies: [],
   novels: [],
   comics: [],
+  habits: [],   // 自訂習慣 [{id,name,color,createdAt}]
+  habitLog: [], // 習慣打卡紀錄 [{id,key,date}]；key＝內建代號或自訂習慣 id
 };
 
 // 還原備份時過濾非預期欄位，防止惡意 JSON 注入額外狀態
@@ -866,6 +868,128 @@ function App() {
   );
 }
 
+// ─── 習慣追蹤器（原子習慣：綠＝完成／紅＝錯過／灰＝不適用；絕不連續錯過兩次）──
+const HABIT_DAYS = 56; // 近 8 週
+const HABIT_BUILTIN = [
+  { key: "zettel", name: "回顧卡片", color: "var(--brand)" },
+  { key: "review", name: "今日復盤", color: "#9C6FA6" },
+  { key: "todo", name: "清一則待辦", color: "var(--blue)" },
+  { key: "ig", name: "IG 有發", color: "var(--accent)" },
+];
+// 由既有資料推算每個習慣近 56 天的格子；只追「有沒有做」，不追數量
+function habitSeries(state) {
+  const t = todayISO();
+  const days = [];
+  for (let i = HABIT_DAYS - 1; i >= 0; i--) days.push(addDays(t, -i));
+  const logs = state.habitLog || [];
+  const setOf = (arr) => new Set(arr.filter(Boolean));
+  const logDates = (k) => setOf(logs.filter((x) => x.key === k).map((x) => x.date));
+  const rows = [];
+  // 回顧卡片：以打卡小帳為準，另補既有卡片的最後回顧日當歷史（只留最後一次，往回不完整）
+  const zSet = logDates("zettel");
+  (state.zettel || []).forEach((c) => { if (c.lastReviewedAt) zSet.add(c.lastReviewedAt); });
+  rows.push({ ...HABIT_BUILTIN[0], done: zSet, na: null });
+  rows.push({ ...HABIT_BUILTIN[1], done: setOf((state.reviews || []).map((r) => r.date)), na: null });
+  rows.push({ ...HABIT_BUILTIN[2], done: setOf((state.todos || []).map((x) => x.doneAt)), na: null });
+  // IG：只有「當天有排定貼文」才計分，沒排的日子算不適用
+  const posts = state.igPosts || [];
+  rows.push({ ...HABIT_BUILTIN[3], done: setOf(posts.filter((p) => p.status === "已發").map((p) => p.date)), na: setOf(posts.map((p) => p.date)) });
+  (state.habits || []).forEach((h) => {
+    rows.push({ key: h.id, name: h.name, color: h.color || "var(--gold)", custom: true, createdAt: h.createdAt, done: logDates(h.id), na: null });
+  });
+  return rows.map((r) => {
+    let start = r.createdAt || "";
+    if (!start) {
+      let m = "";
+      const scan = (d) => { if (d && (!m || d < m)) m = d; };
+      r.done.forEach(scan);
+      if (r.na) r.na.forEach(scan); // IG：有排貼文的第一天就算開始，未發＝錯過
+      start = m || t;
+    }
+    const cells = days.map((d) => {
+      if (d > t) return "f";
+      if (r.done.has(d)) return "g";
+      if (d < start) return "n";
+      if (r.na && !r.na.has(d)) return "n";
+      return "r";
+    });
+    // 連續天數：今天還沒做不歸零（從昨天算起），「不適用」的日子跳過不算斷
+    let streak = 0;
+    for (let i = cells.length - 1; i >= 0; i--) {
+      const c = cells[i];
+      if (c === "f" || c === "n") continue;
+      if (c === "g") { streak++; continue; }
+      if (i === cells.length - 1) continue;
+      break;
+    }
+    const yest = cells[cells.length - 2];
+    const tdy = cells[cells.length - 1];
+    return { ...r, cells, streak, start, todayDone: tdy === "g", warn: yest === "r" && tdy !== "g" };
+  });
+}
+
+function HabitTracker({ state, update }) {
+  const t = todayISO();
+  const rows = habitSeries(state);
+  const warns = rows.filter((r) => r.warn);
+  const [adding, setAdding] = useState(false);
+  const [hName, setHName] = useState("");
+  const toggleToday = (key) => {
+    const logs = state.habitLog || [];
+    const hit = logs.find((x) => x.key === key && x.date === t);
+    update({ habitLog: hit ? logs.filter((x) => x !== hit) : [{ id: uid(), key, date: t }, ...logs] });
+  };
+  const addHabit = () => {
+    const n = hName.trim();
+    if (!n) return;
+    update({ habits: [...(state.habits || []), { id: uid(), name: n.slice(0, 12), color: "var(--gold)", createdAt: t }] });
+    setHName(""); setAdding(false);
+  };
+  const delHabit = async (id, name) => {
+    if (!(await window.appConfirm(`刪除習慣「${name}」？打過的格子也會一起消失。`))) return;
+    update({ habits: (state.habits || []).filter((x) => x.id !== id), habitLog: (state.habitLog || []).filter((x) => x.key !== id) });
+  };
+  return (
+    <div className="dp-hab">
+      {warns.length > 0 && (
+        <div className="dp-hab-warn">⚠ {warns.map((r) => r.name).join("、")} 昨天空了一格 —— 今天別讓它變成兩格。</div>
+      )}
+      {rows.map((r) => (
+        <div key={r.key} className="dp-hab-row">
+          <div className="dp-hab-name">
+            <span className="dp-hab-dot" style={{ background: r.color }} />
+            {r.name}
+          </div>
+          <div className="dp-hab-strip">
+            {r.cells.map((c, i) => (
+              <i key={i} className={"dp-hab-c " + c + (i === r.cells.length - 1 ? " td" : "")} />
+            ))}
+          </div>
+          <span className="dp-hab-n">連續 <b>{r.streak}</b></span>
+          {r.custom && (
+            <button className={"dp-hab-tick" + (r.todayDone ? " on" : "")} onClick={() => toggleToday(r.key)}>{r.todayDone ? "✓ 今天" : "打勾"}</button>
+          )}
+          {r.custom && <button className="dp-hab-x" onClick={() => delHabit(r.key, r.name)}>✕</button>}
+        </div>
+      ))}
+      <div className="dp-hab-foot">
+        {adding ? (
+          <span className="dp-hab-addbox">
+            <input className="dp-hab-in" autoFocus value={hName} maxLength={12} placeholder="習慣名稱（例：寫字 10 分鐘）"
+              onChange={(e) => setHName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addHabit(); if (e.key === "Escape") { setAdding(false); setHName(""); } }} />
+            <button className="dp-btn" onClick={addHabit}>加入</button>
+            <button className="dp-btn" onClick={() => { setAdding(false); setHName(""); }}>取消</button>
+          </span>
+        ) : (
+          <button className="dp-hab-add" onClick={() => setAdding(true)}>＋ 新增自己的習慣</button>
+        )}
+        <span className="dp-hab-lg"><i className="dp-hab-c g" />完成<i className="dp-hab-c r" style={{ marginLeft: 8 }} />錯過<i className="dp-hab-c n" style={{ marginLeft: 8 }} />不適用　左＝8 週前 · 右＝今天</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── TODAY / BRIEFING ────────────────────────────────────────
 function Today({ state, go, update }) {
   const t = todayISO();
@@ -875,7 +999,14 @@ function Today({ state, go, update }) {
     .filter((c) => (c.lastReviewedAt || "") !== t)
     .sort((a, b) => (a.lastReviewedAt || "").localeCompare(b.lastReviewedAt || ""))
     .slice(0, 3);
-  const markReviewed = (id) => update({ zettel: zAll.map((c) => c.id === id ? { ...c, lastReviewedAt: t } : c) });
+  const markReviewed = (id) => {
+    const logs = state.habitLog || [];
+    const marked = logs.some((x) => x.key === "zettel" && x.date === t);
+    update({
+      zettel: zAll.map((c) => c.id === id ? { ...c, lastReviewedAt: t } : c),
+      habitLog: marked ? logs : [{ id: uid(), key: "zettel", date: t }, ...logs],
+    });
+  };
   // 今日復盤：四領域（親子館/Sororism/個人IG/個人進修）各抽一題，同一天固定、可換一批
   const RV_AREAS = [
     { name: "親子館", color: "var(--brand)" },
@@ -895,6 +1026,17 @@ function Today({ state, go, update }) {
     if (pool.length === 0) return null;
     return { ...a, ...pool[(rvHash(t + a.name) + rvSeed) % pool.length] };
   }).filter(Boolean);
+  // 復盤降階：一句話快答（存進 reviews，格子照樣算完成）
+  const [qaOpen, setQaOpen] = useState(null);
+  const [qaText, setQaText] = useState("");
+  const rvDone = new Set((state.reviews || []).filter((r) => r.date === t).map((r) => r.topic));
+  const saveQuick = (q) => {
+    const s = qaText.trim();
+    if (!s) return;
+    update({ reviews: [{ id: uid(), ideaId: q.ideaId, date: t, topic: q.topic, keep: [], improve: [], next: [], note: s, quick: true }, ...(state.reviews || [])] });
+    setQaOpen(null); setQaText("");
+    if (window.appToast) window.appToast("記下了 ✓");
+  };
   const saveTodayReview = (r) => {
     update({ reviews: [{ ...r, id: uid(), ideaId: rvTopic.ideaId, date: t }, ...(state.reviews || [])] });
     setRvTopic(null);
@@ -935,6 +1077,8 @@ function Today({ state, go, update }) {
         <span className="dp-dash-chip" onClick={() => go("todo")}>☑️ 待辦未完 {openTodos.length}</span>
         <span className="dp-dash-chip" onClick={() => go("supplies")}>⏰ 效期警示 {supSoon.length}</span>
       </div>
+
+      <HabitTracker state={state} update={update} />
 
       <div className="dp-grid2">
         <Card title="今日行程" count={todayEvents.length} action={() => go("cal")}>
@@ -1011,11 +1155,27 @@ function Today({ state, go, update }) {
           ) : (
             <div>
               {rvQs.map((q) => (
-                <Row key={q.name} dot={q.color}>
-                  <b style={{ fontSize: 10, fontWeight: 500, color: "var(--card2)", background: q.color, borderRadius: 4, padding: "1px 5px", marginRight: 5 }}>{q.name}</b>
-                  {q.topic}
-                  <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px", marginLeft: 6 }} onClick={() => setRvTopic({ topic: q.topic, ideaId: q.ideaId })}>復盤</button>
-                </Row>
+                <div key={q.name}>
+                  <Row dot={q.color}>
+                    <b style={{ fontSize: 10, fontWeight: 500, color: "var(--card2)", background: q.color, borderRadius: 4, padding: "1px 5px", marginRight: 5 }}>{q.name}</b>
+                    {q.topic}
+                    {rvDone.has(q.topic) && <span className="dp-hab-ok">✓ 今天答過</span>}
+                    {!rvDone.has(q.topic) && (
+                      <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px", marginLeft: 6 }} onClick={() => { setQaOpen(qaOpen === q.topic ? null : q.topic); setQaText(""); }}>一句話</button>
+                    )}
+                    {!rvDone.has(q.topic) && (
+                      <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px", marginLeft: 4 }} onClick={() => setRvTopic({ topic: q.topic, ideaId: q.ideaId })}>完整復盤</button>
+                    )}
+                  </Row>
+                  {qaOpen === q.topic && (
+                    <div className="dp-hab-qa">
+                      <input className="dp-hab-in" autoFocus value={qaText} placeholder="一句話就好：這個我可以怎麼用？"
+                        onChange={(e) => setQaText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveQuick(q); if (e.key === "Escape") setQaOpen(null); }} />
+                      <button className="dp-btn" onClick={() => saveQuick(q)}>存</button>
+                    </div>
+                  )}
+                </div>
               ))}
               <div style={{ marginTop: 6 }}>
                 <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px" }} onClick={() => { setRvSeed(rvSeed + 1); setRvTopic(null); }}>🔄 換一批</button>
@@ -3954,10 +4114,11 @@ function IdeaCard({ idea, onDel, state, update }) {
           {myReviews.map((r) => (
             <div key={r.id} className="dp-rvitem">
               <div className="dp-rvitem-top"><b>{r.topic}</b><span>{r.date.slice(5)}</span><button className="dp-x" onClick={() => delReview(r.id)}>✕</button></div>
+              {r.note && <div className="dp-rvnote">{r.quick ? "一句話：" : ""}{r.note}</div>}
               <div className="dp-rvcols">
-                <div><span className="dp-rvc keep">保留</span>{r.keep.map((x, i) => <p key={i}>{x}</p>)}</div>
-                <div><span className="dp-rvc improve">改進</span>{r.improve.map((x, i) => <p key={i}>{x}</p>)}</div>
-                <div><span className="dp-rvc next">下次行動</span>{r.next.map((x, i) => <p key={i}>{x}</p>)}</div>
+                <div><span className="dp-rvc keep">保留</span>{(r.keep || []).map((x, i) => <p key={i}>{x}</p>)}</div>
+                <div><span className="dp-rvc improve">改進</span>{(r.improve || []).map((x, i) => <p key={i}>{x}</p>)}</div>
+                <div><span className="dp-rvc next">下次行動</span>{(r.next || []).map((x, i) => <p key={i}>{x}</p>)}</div>
               </div>
             </div>
           ))}
@@ -5885,6 +6046,36 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-dash-strip{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 .dp-dash-chip{display:inline-flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--hair);border-radius:4px;padding:7px 14px;font-size:13px;font-weight:400;color:var(--ink);cursor:pointer;box-shadow:none}
 .dp-dash-chip:hover{background:var(--card2)}
+
+/* 習慣追蹤器（原子習慣：綠＝完成／紅＝錯過／灰＝不適用；56 天一條） */
+.dp-hab{margin:0 0 18px;padding:12px 13px 10px;background:var(--card2);border:1px solid var(--hair);border-radius:8px}
+.dp-hab-warn{background:#fdece4;border:1px solid #f5c8b0;border-radius:4px;padding:7px 10px;font-size:12.5px;color:#8a3b12;line-height:1.5;margin-bottom:10px}
+.dp-hab-row{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+.dp-hab-name{font-size:12.5px;width:104px;flex:0 0 auto;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
+.dp-hab-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.dp-hab-strip{display:flex;gap:2px;overflow-x:auto;padding-bottom:2px;flex:1 1 auto;min-width:0;scrollbar-width:none;-ms-overflow-style:none}
+.dp-hab-strip::-webkit-scrollbar{display:none}
+.dp-hab-c{display:inline-block;width:8px;height:16px;border-radius:2px;background:#e6e5e0;flex:0 0 auto}
+.dp-hab-c.g{background:var(--brand)}
+.dp-hab-c.r{background:#f0c3ae}
+.dp-hab-c.f{background:transparent}
+.dp-hab-c.td{outline:1.5px solid var(--ink);outline-offset:1px}
+.dp-hab-n{font-family:var(--mono);font-size:11.5px;color:var(--muted);flex:0 0 auto;font-feature-settings:"tnum"}
+.dp-hab-n b{color:var(--ink);font-size:14px;font-weight:500}
+.dp-hab-tick{font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:4px;color:var(--muted);flex:0 0 auto}
+.dp-hab-tick.on{background:var(--brand);border-color:var(--brand);color:var(--card2)}
+.dp-hab-x{font-size:10px;color:var(--sub);padding:0 2px;flex:0 0 auto}
+.dp-hab-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;padding-top:8px;border-top:1px solid var(--hair)}
+.dp-hab-addbox{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.dp-hab-add{font-size:12px;color:var(--brand)}
+.dp-hab-in{border:1px solid var(--line);border-radius:4px;padding:3px 7px;font-size:12.5px;background:var(--card2);min-width:180px}
+.dp-hab-lg{font-size:11px;color:var(--sub);margin-left:auto;display:flex;align-items:center;gap:3px;white-space:nowrap}
+.dp-hab-lg .dp-hab-c{width:8px;height:10px;margin-right:3px}
+.dp-hab-ok{font-size:11px;color:var(--brand);margin-left:6px}
+.dp-hab-qa{display:flex;gap:5px;align-items:center;padding:4px 0 8px 16px}
+.dp-hab-qa .dp-hab-in{flex:1 1 auto;min-width:0}
+.dp-rvnote{font-size:13px;line-height:1.6;color:var(--ink);padding:2px 0 5px}
+@media(max-width:600px){.dp-hab-name{width:76px;font-size:11.5px}.dp-hab-lg{display:none}}
 
 .dp-alert{margin-top:18px;background:#f2ede8;border:1px solid #f3d9c9;border-radius:4px;padding:12px 18px;display:flex;gap:18px;flex-wrap:wrap;align-items:center}
 .dp-alert-t{color:var(--accent);font-weight:500;font-size:13px}
