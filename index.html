@@ -432,7 +432,7 @@ function VoiceRecorder({ onResult }) {
   return (
     <div className="dp-voice-bar">
       <button className={"dp-voice-btn" + (on ? " active" : "")} onClick={toggle}>
-        {on ? "⏹ 錄音中…" : "🎤 錄音轉文字"}
+        {on ? "錄音中…（點此停止）" : "錄音轉文字"}
       </button>
       {interim && <span className="dp-voice-interim">{interim}</span>}
     </div>
@@ -536,7 +536,7 @@ function App() {
     const has = (...ss) => ss.some((s) => String(s || "").toLowerCase().includes(q));
     const out = [];
     (state.events || []).forEach((e) => { if (has(e.title)) out.push({ tab: "cal", type: "行事曆", text: (e.date || "") + " " + (e.time || "") + " " + (e.title || "") }); });
-    (state.todos || []).forEach((x) => { if (has(x.text, x.owner)) out.push({ tab: "todo", type: "待辦", text: (x.done ? "✓ " : "") + (x.text || "") }); });
+    (state.todos || []).forEach((x) => { if (has(x.text, x.owner)) out.push({ tab: "todo", type: "待辦", text: (x.done ? "已完成｜" : "") + (x.text || "") }); });
     (state.zettel || []).forEach((c) => { if (has(c.title, c.content, (c.tags || []).join(" "))) out.push({ tab: "zettel", type: "卡片盒", text: (c.num ? c.num + "·" : "") + (c.title || ""), zid: c.id }); });
     (state.ideas || []).forEach((i) => { if (has(i.title, (Array.isArray(i.summary) ? i.summary : []).join(" "))) out.push({ tab: "ideas", type: "發想", text: i.title || "" }); });
     (state.igPosts || []).forEach((p) => { if (has(p.topic, p.detail)) out.push({ tab: "ig", type: "IG 排程", text: (p.date || "") + " " + (p.topic || "") }); });
@@ -680,10 +680,10 @@ function App() {
   };
 
   const SYNC_FOOT = {
-    pending: "☁️ 有變更，準備同步…",
-    syncing: "☁️ 同步中…",
-    ok: "☁️ ✓ 已同步",
-    err: "☁️ ⚠ 同步失敗（資料仍存在本機）",
+    pending: "有變更，準備同步…",
+    syncing: "同步中…",
+    ok: "已同步",
+    err: "同步失敗（資料仍存在本機）",
   };
 
   const update = (patch) => { setState((s) => ({ ...s, ...patch })); if (patch && "igPosts" in patch) scheduleAutoExport(patch.igPosts); };
@@ -712,20 +712,20 @@ function App() {
       <style>{CSS}</style>
 
       {!online && (
-        <div className="dp-offline-bar">📴 目前離線——資料都存在本機，功能照常使用</div>
+        <div className="dp-offline-bar">目前離線——資料都存在本機，功能照常使用</div>
       )}
 
       {saveErr && (
         <div className="dp-savewarn" role="alert">
-          ⚠️ 資料儲存失敗——瀏覽器空間可能已滿。剛才的變更<b>沒有</b>存進本機！請立刻到「備份」分頁下載備份檔，再刪除一些舊資料或縮圖後繼續使用。
+          資料儲存失敗——瀏覽器空間可能已滿。剛才的變更<b>沒有</b>存進本機！請立刻到「備份」分頁下載備份檔，再刪除一些舊資料或縮圖後繼續使用。
         </div>
       )}
 
       {backupDue && !saveErr && (
         <div className="dp-backupwarn" role="status">
-          <span>🗂️ 提醒：距離上次備份已超過 {BACKUP_REMIND_DAYS} 天。資料只存在這台裝置，建議下載一份備份保平安。</span>
+          <span>提醒：距離上次備份已超過 {BACKUP_REMIND_DAYS} 天。資料只存在這台裝置，建議下載一份備份保平安。</span>
           <button className="dp-backupwarn-go" onClick={() => { setTab("backup"); setBackupDue(false); }}>去備份</button>
-          <button className="dp-backupwarn-x" onClick={() => setBackupDue(false)} aria-label="關閉提醒">✕</button>
+          <button className="dp-backupwarn-x" onClick={() => setBackupDue(false)} aria-label="關閉提醒">關閉</button>
         </div>
       )}
 
@@ -752,7 +752,7 @@ function App() {
       {conflict && (
         <div className="dp-syncmodal">
           <div className="dp-syncmodal-box">
-            <div className="dp-ai-t">☁️ 雲端和這台裝置都有新變更</div>
+            <div className="dp-ai-t">雲端和這台裝置都有新變更</div>
             <p className="dp-ai-sub" style={{ marginTop: 8 }}>
               雲端版本時間：{new Date(conflict.ts).toLocaleString("zh-TW")}。<br />
               要保留哪一份？被覆蓋的那份就回不來了，不確定的話，先按「稍後決定」到「備份」分頁下載備份檔。
@@ -769,7 +769,7 @@ function App() {
       {quickCap && (
         <div className="dp-syncmodal" onClick={() => setQuickCap(false)}>
           <div className="dp-syncmodal-box" onClick={(e) => e.stopPropagation()}>
-            <div className="dp-ai-t">⚡ 快速捕捉（存成閃現筆記）</div>
+            <div className="dp-ai-t">快速捕捉（存成閃現筆記）</div>
             <textarea className="dp-ta" rows={3} autoFocus value={quickText}
               onChange={(e) => setQuickText(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveQuick(); } if (e.key === "Escape") setQuickCap(false); }}
@@ -785,7 +785,7 @@ function App() {
       {gsOpen && (
         <div className="dp-syncmodal" onClick={() => { setGsOpen(false); setGsQ(""); }}>
           <div className="dp-syncmodal-box" onClick={(e) => e.stopPropagation()}>
-            <div className="dp-ai-t">🔍 全域搜尋</div>
+            <div className="dp-ai-t">全域搜尋</div>
             <input className="dp-src" autoFocus placeholder="搜尋行程、待辦、卡片、IG、書目…（↑↓ 選、Enter 跳轉）"
               value={gsQ} onChange={(e) => { setGsQ(e.target.value); setGsIdx(0); }}
               onKeyDown={(e) => {
@@ -812,7 +812,7 @@ function App() {
       )}
 
       {loaded && (tab === "today" || tab === "zettel") && !quickCap && (
-        <button className="dp-fab" title="快速捕捉靈感（Ctrl+J）" onClick={() => setQuickCap(true)}>⚡</button>
+        <button className="dp-fab" title="快速捕捉靈感（Ctrl+J）" onClick={() => setQuickCap(true)}>記</button>
       )}
 
       {/* spine + tabs */}
@@ -833,13 +833,13 @@ function App() {
             </button>
           ))}
           <button className="dp-tab" title="全域搜尋（Ctrl+K）" onClick={() => setGsOpen(true)}>
-            <span className="dp-tab-l">🔍 搜尋</span>
+            <span className="dp-tab-l">搜尋</span>
             <span className="dp-tab-s">Ctrl+K</span>
           </button>
         </nav>
         <div className="dp-spine-foot">
           {cloudCfgReady(cloudCfgApp)
-            ? (SYNC_FOOT[syncStatus] || "☁️ 雲端同步已設定")
+            ? (SYNC_FOOT[syncStatus] || "雲端同步已設定")
             : "單機版 · 資料存於本機"}
         </div>
       </aside>
@@ -931,7 +931,6 @@ function habitSeries(state) {
 function HabitTracker({ state, update }) {
   const t = todayISO();
   const rows = habitSeries(state);
-  const warns = rows.filter((r) => r.warn);
   const [adding, setAdding] = useState(false);
   const [hName, setHName] = useState("");
   const toggleToday = (key) => {
@@ -951,9 +950,7 @@ function HabitTracker({ state, update }) {
   };
   return (
     <div className="dp-hab">
-      {warns.length > 0 && (
-        <div className="dp-hab-warn">⚠ {warns.map((r) => r.name).join("、")} 昨天空了一格 —— 今天別讓它變成兩格。</div>
-      )}
+      <div className="dp-hab-note">今天的我，已用一張回顧與一項完成，重新接住自己的節奏。</div>
       {rows.map((r) => (
         <div key={r.key} className="dp-hab-row">
           <div className="dp-hab-name">
@@ -967,9 +964,9 @@ function HabitTracker({ state, update }) {
           </div>
           <span className="dp-hab-n">連續 <b>{r.streak}</b></span>
           {r.custom && (
-            <button className={"dp-hab-tick" + (r.todayDone ? " on" : "")} onClick={() => toggleToday(r.key)}>{r.todayDone ? "✓ 今天" : "打勾"}</button>
+            <button className={"dp-hab-tick" + (r.todayDone ? " on" : "")} onClick={() => toggleToday(r.key)}>{r.todayDone ? "已做" : "打勾"}</button>
           )}
-          {r.custom && <button className="dp-hab-x" onClick={() => delHabit(r.key, r.name)}>✕</button>}
+          {r.custom && <button className="dp-hab-x" onClick={() => delHabit(r.key, r.name)}>刪除</button>}
         </div>
       ))}
       <div className="dp-hab-foot">
@@ -1035,7 +1032,7 @@ function Today({ state, go, update }) {
     if (!s) return;
     update({ reviews: [{ id: uid(), ideaId: q.ideaId, date: t, topic: q.topic, keep: [], improve: [], next: [], note: s, quick: true }, ...(state.reviews || [])] });
     setQaOpen(null); setQaText("");
-    if (window.appToast) window.appToast("記下了 ✓");
+    if (window.appToast) window.appToast("記下了");
   };
   const saveTodayReview = (r) => {
     update({ reviews: [{ ...r, id: uid(), ideaId: rvTopic.ideaId, date: t }, ...(state.reviews || [])] });
@@ -1073,9 +1070,9 @@ function Today({ state, go, update }) {
       </header>
 
       <div className="dp-dash-strip">
-        <span className="dp-dash-chip" onClick={() => go("cal")}>📅 今日行程 {todayEvents.length}</span>
-        <span className="dp-dash-chip" onClick={() => go("todo")}>☑️ 待辦未完 {openTodos.length}</span>
-        <span className="dp-dash-chip" onClick={() => go("supplies")}>⏰ 效期警示 {supSoon.length}</span>
+        <span className="dp-dash-chip" onClick={() => go("cal")}>今日行程 {todayEvents.length}</span>
+        <span className="dp-dash-chip" onClick={() => go("todo")}>待辦未完 {openTodos.length}</span>
+        <span className="dp-dash-chip" onClick={() => go("supplies")}>效期提醒 {supSoon.length}</span>
       </div>
 
       <HabitTracker state={state} update={update} />
@@ -1134,14 +1131,14 @@ function Today({ state, go, update }) {
 
         <Card title="今天回顧 3 張卡" count={reviewPick.length} action={() => go("zettel")}>
           {zAll.length === 0 ? (
-            <Empty>卡片盒還沒有卡片；按 Ctrl+J（或右下 ⚡）隨時記下靈感。</Empty>
+            <Empty>卡片盒還沒有卡片；按 Ctrl+J（或右下「記」）隨時記下靈感。</Empty>
           ) : reviewPick.length === 0 ? (
             <Empty>今天都回顧過了，明天再來。</Empty>
           ) : (
             reviewPick.map((c) => (
               <Row key={c.id} dot={ztOf(c.type).color}>
                 {c.title}
-                <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px", marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); markReviewed(c.id); }}>看過了 ✓</button>
+                <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px", marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); markReviewed(c.id); }}>看過了</button>
               </Row>
             ))
           )}
@@ -1159,7 +1156,7 @@ function Today({ state, go, update }) {
                   <Row dot={q.color}>
                     <b style={{ fontSize: 10, fontWeight: 500, color: "var(--card2)", background: q.color, borderRadius: 4, padding: "1px 5px", marginRight: 5 }}>{q.name}</b>
                     {q.topic}
-                    {rvDone.has(q.topic) && <span className="dp-hab-ok">✓ 今天答過</span>}
+                    {rvDone.has(q.topic) && <span className="dp-hab-ok">今天答過</span>}
                     {!rvDone.has(q.topic) && (
                       <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px", marginLeft: 6 }} onClick={() => { setQaOpen(qaOpen === q.topic ? null : q.topic); setQaText(""); }}>一句話</button>
                     )}
@@ -1178,7 +1175,7 @@ function Today({ state, go, update }) {
                 </div>
               ))}
               <div style={{ marginTop: 6 }}>
-                <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px" }} onClick={() => { setRvSeed(rvSeed + 1); setRvTopic(null); }}>🔄 換一批</button>
+                <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px" }} onClick={() => { setRvSeed(rvSeed + 1); setRvTopic(null); }}>換一批</button>
               </div>
             </div>
           )}
@@ -1193,7 +1190,7 @@ function Today({ state, go, update }) {
 
       {upcomingDeadlines.length > 0 && (
         <div className="dp-alert">
-          <span className="dp-alert-t">⚠ 即將到期</span>
+          <span className="dp-alert-t">即將到期</span>
           {upcomingDeadlines.map((e) => (
             <span key={e.id} className="dp-alert-i">
               {e.date.slice(5)}　{e.title}
@@ -1341,7 +1338,7 @@ function Calendar({ state, update }) {
       </div>
 
       <div className="dp-zsearch" style={{ marginBottom: q.trim() ? 10 : 14 }}>
-        <input placeholder="🔍 搜尋行事曆事件…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input placeholder="搜尋行事曆事件…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {q.trim() && (
         <div className="dp-import" style={{ marginBottom: 16 }}>
@@ -1488,8 +1485,8 @@ function Calendar({ state, update }) {
                 <>
                   <b className="dp-day-time">{e.time || "整天"}</b>
                   <span className="dp-day-title">{e.title}</span>
-                  <button className="dp-x" style={{ color: "var(--sub)" }} title="編輯" onClick={() => startEditEv(e)}>✎</button>
-                  <button className="dp-x" onClick={() => delEvent(e.id)}>✕</button>
+                  <button className="dp-x" style={{ color: "var(--sub)" }} title="編輯" onClick={() => startEditEv(e)}>編輯</button>
+                  <button className="dp-x" onClick={() => delEvent(e.id)}>刪除</button>
                 </>
               )}
             </div>
@@ -1709,7 +1706,7 @@ function Todos({ state, update }) {
         <div className="dp-igfilter">
           <button className={"dp-igf" + (catFilter === "all" ? " on" : "")} onClick={() => setCatFilter("all")}>全部性質</button>
           {cats.map((c) => (
-            <button key={c.id} className={"dp-igf" + (catFilter === c.id ? " on" : "")} onClick={() => setCatFilter(c.id === catFilter ? "all" : c.id)}>{(c.kind === "idea" ? "💡" : "") + c.name}</button>
+            <button key={c.id} className={"dp-igf" + (catFilter === c.id ? " on" : "")} onClick={() => setCatFilter(c.id === catFilter ? "all" : c.id)}>{c.name}</button>
           ))}
           <button className={"dp-igf" + (catFilter === "none" ? " on" : "")} onClick={() => setCatFilter("none")}>未分類</button>
           {catFilter !== "all" && catFilter !== "none" && (
@@ -1752,7 +1749,7 @@ function Todos({ state, update }) {
                   {imgs.map((i) => (
                     <div key={i.id} className="dp-thumb">
                       <img src={i.url} alt="截圖" />
-                      <button className="dp-thumb-x" onClick={(ev) => { ev.stopPropagation(); removeImg(i.id); }}>✕</button>
+                      <button className="dp-thumb-x" onClick={(ev) => { ev.stopPropagation(); removeImg(i.id); }}>刪</button>
                     </div>
                   ))}
                   <span className="dp-thumb-add">＋ 再加</span>
@@ -1797,10 +1794,10 @@ function Todos({ state, update }) {
 
       <details className="dp-bulk">
         <summary>管理性質分類（{cats.length}）</summary>
-        <p className="dp-import-sub">「事件」是做完就銷掉的；「💡 想法」類的待辦在新增時會自動同步一張閃現卡進卡片盒（帶分類標籤＋#待辦想法），累積成第二大腦的素材。先在上方篩選列點選一個分類，再新增的待辦就會歸進去。</p>
+        <p className="dp-import-sub">「事件」是做完就銷掉的；「想法」類的待辦在新增時會自動同步一張閃現卡進卡片盒（帶分類標籤＋#待辦想法），累積成第二大腦的素材。先在上方篩選列點選一個分類，再新增的待辦就會歸進去。</p>
         {cats.map((c) => (
           <div key={c.id} className="dp-zsug">
-            <span className="dp-zsug-t">{c.kind === "idea" ? "💡 " : ""}{c.name}</span>
+            <span className="dp-zsug-t">{c.name}</span>
             <span className="dp-zsug-why">{c.kind === "idea" ? "想法（同步卡片盒）" : "事件"}</span>
             <span className="dp-zsug-btns">
               <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px" }} onClick={() => renameCat(c)}>改名</button>
@@ -1813,7 +1810,7 @@ function Todos({ state, update }) {
             value={newCat} onChange={(e) => setNewCat(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCat()} />
           <select className="dp-src" style={{ marginBottom: 0, maxWidth: 170 }} value={newCatKind} onChange={(e) => setNewCatKind(e.target.value)}>
             <option value="event">事件</option>
-            <option value="idea">💡 想法（同步卡片盒）</option>
+            <option value="idea">想法（同步卡片盒）</option>
           </select>
           <button className="dp-btn solid" onClick={addCat}>新增分類</button>
         </div>
@@ -1848,7 +1845,7 @@ function Todos({ state, update }) {
                   <select className="dp-src" style={{ marginBottom: 0, maxWidth: 130 }}
                     value={editForm.catId} onChange={(e) => setEditForm({ ...editForm, catId: e.target.value })}>
                     <option value="">未分類</option>
-                    {cats.map((c) => <option key={c.id} value={c.id}>{(c.kind === "idea" ? "💡" : "") + c.name}</option>)}
+                    {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <button className="dp-btn solid" onClick={saveEdit}>儲存</button>
                   <button className="dp-btn" onClick={() => setEditId(null)}>取消</button>
@@ -1860,14 +1857,14 @@ function Todos({ state, update }) {
                   <span className="dp-todo-text">{x.text}</span>
                   <span className="dp-todo-meta">
                     <em style={{ color: x.scope === "work" ? "var(--blue)" : "var(--sub)", fontStyle: "normal", fontWeight: 500 }}>{scopeLabel(x.scope)}</em>
-                    {catOfTodo(x) && <em style={{ color: catOfTodo(x).kind === "idea" ? "var(--gold)" : "#5a6b7a", fontStyle: "normal", fontWeight: 500 }}>{(catOfTodo(x).kind === "idea" ? "💡" : "") + catOfTodo(x).name}</em>}
+                    {catOfTodo(x) && <em style={{ color: catOfTodo(x).kind === "idea" ? "var(--gold)" : "#5a6b7a", fontStyle: "normal", fontWeight: 500 }}>{catOfTodo(x).name}</em>}
                     {x.owner && <em>{x.owner}</em>}
                     {x.due && <em>· {x.due}</em>}
                     <i className={"dp-pri " + x.priority}>{x.priority}</i>
                   </span>
                 </div>
-                <button className="dp-x" style={{ color: "var(--sub)" }} title="編輯" onClick={() => startEdit(x)}>✎</button>
-                <button className="dp-x" onClick={() => del(x.id)}>✕</button>
+                <button className="dp-x" style={{ color: "var(--sub)" }} title="編輯" onClick={() => startEdit(x)}>編輯</button>
+                <button className="dp-x" onClick={() => del(x.id)}>刪除</button>
               </>
             )}
           </div>
@@ -1881,7 +1878,7 @@ function Todos({ state, update }) {
             <div key={x.id} className="dp-todo done">
               <button className="dp-check on" onClick={() => toggle(x.id)} />
               <span className="dp-todo-text">{x.text}</span>
-              <button className="dp-x" onClick={() => del(x.id)}>✕</button>
+              <button className="dp-x" onClick={() => del(x.id)}>刪除</button>
             </div>
           ))}
         </details>
@@ -2116,7 +2113,7 @@ function IGToolbox() {
   };
   return (
     <details className="dp-bulk">
-      <summary>🧰 IG 攻略工具箱（8 個指令模板，填好一鍵複製）</summary>
+      <summary>IG 攻略工具箱（8 個指令模板，填好一鍵複製）</summary>
       <p className="dp-import-sub">
         來自 @lifeditstudio 的 7 個成長指令＋Double Tap 留存技法。選指令、填空、按複製，貼到任何 AI 對話就能用；全程在本機組字串，<b>不呼叫 Gemini、不吃額度</b>。<br />
         攻略原文的提醒：真正讓帳號成長的不是指令，是連續 30 天每天執行。
@@ -2374,7 +2371,7 @@ function SBBoards({ state, update }) {
   const todo = boards.reduce((n, b) => n + b.shots.filter((s) => !s.done).length, 0);
   return (
     <details className="dp-bulk">
-      <summary>🎬 分鏡工作板（{(SB_STYLES[styleKey] || SB_STYLES.illu).label}・待生 {todo} 張）</summary>
+      <summary>分鏡工作板（{(SB_STYLES[styleKey] || SB_STYLES.illu).label}・待生 {todo} 張）</summary>
       <p className="dp-import-sub">
         選風格 → 展開該篇 → 「複製整篇」貼給 GPT 生圖 → 存進素材庫（檔名照標示的「日期_格號」）→ 勾掉完成。
         prompt 已自動組好：風格＋場景＋該帳號固定配色＋9:16／無文字／只拍手不露臉。全程本機組字串，<b>不呼叫 Gemini、不吃額度</b>。
@@ -2397,7 +2394,7 @@ function SBBoards({ state, update }) {
               <b>{b.date ? b.date.slice(5).replace("-", "/") : "未定"}</b>
               <span style={{ color: acc.color, margin: "0 6px" }}>● {acc.label}</span>
               {b.title}
-              <span style={{ ...chip, marginLeft: 6 }}>{left > 0 ? "待生 " + left + "/" + b.shots.length : "✅ 完成"}</span>
+              <span style={{ ...chip, marginLeft: 6 }}>{left > 0 ? "待生 " + left + "/" + b.shots.length : "完成"}</span>
             </summary>
             <div className="dp-ai-bar" style={{ margin: "8px 0" }}>
               <button className="dp-btn solid" onClick={() => copyBoard(b)}>複製整篇給 GPT</button>
@@ -2501,7 +2498,7 @@ async function autoExportSchedule(posts, opts) {
     await w.write(JSON.stringify(payload, null, 2));
     await w.close();
     try { localStorage.setItem("director-planner-lastschedexport-v1", new Date().toISOString()); } catch (e) {}
-    if (window.appToast) window.appToast("✓ 現行進度已同步（" + active.length + " 則待發）→ ig_現行進度.json", "sync", 3500);
+    if (window.appToast) window.appToast("現行進度已同步（" + active.length + " 則待發），寫入 ig_現行進度.json", "sync", 3500);
   } catch (e) {
     if (e && e.name === "AbortError") return;
     if (opts.pick && window.appToast) window.appToast("匯出現行進度失敗，請再試一次或用電腦版 Edge");
@@ -2536,7 +2533,7 @@ function IGCandidates({ state, update }) {
     // 排入後卡片留在候選池、標「已排」（不再移除）：這樣不管先按哪則，自動同步的檔案都留得住，每日任務不會漏
     const nl = list.map((x) => (x.id === c.id ? { ...x, status: "已排", eventId } : x));
     update({ igPosts: [...state.igPosts, post], events: [...state.events, ev], igCandidates: nl });
-    if (window.appToast) window.appToast("✓ 已排入 " + c.date + "，卡片留在候選池並標「已排」", "sync", 4000);
+    if (window.appToast) window.appToast("已排入 " + c.date + "，卡片留在候選池並標「已排」", "sync", 4000);
     autoExportPool(nl);
   };
   // 匯出候選池給每天 8 點的 IG 任務讀：直接寫進她指定過的資料夾（記住位置），不支援時退回一般下載
@@ -2546,14 +2543,14 @@ function IGCandidates({ state, update }) {
     if (!window.showDirectoryPicker) return;
     try {
       const dir = await poolDirGet();
-      if (!dir) { if (window.appToast) window.appToast("候選池已更新；按一次「⬇ 匯出候選池」選好資料夾，之後填日期就會自動同步"); return; }
+      if (!dir) { if (window.appToast) window.appToast("候選池已更新；按一次「匯出候選池」選好資料夾，之後填日期就會自動同步"); return; }
       const perm = await dir.queryPermission({ mode: "readwrite" });
-      if (perm !== "granted") { if (window.appToast) window.appToast("候選池已更新；按一次「⬇ 匯出候選池」重新授權資料夾即可自動同步"); return; }
+      if (perm !== "granted") { if (window.appToast) window.appToast("候選池已更新；按一次「匯出候選池」重新授權資料夾即可自動同步"); return; }
       const fh = await dir.getFileHandle("ig候選池_匯出.json", { create: true });
       const w = await fh.createWritable();
       await w.write(JSON.stringify({ exportedAt: todayISO(), candidates: nextList }, null, 2));
       await w.close();
-      if (window.appToast) window.appToast("✓ 候選池已自動同步！明早 8 點任務就會讀到這幾則", "sync", 5000);
+      if (window.appToast) window.appToast("候選池已自動同步！明早 8 點任務就會讀到這幾則", "sync", 5000);
     } catch (e) { /* 靜默失敗，不打斷編輯 */ }
   };
   const downloadPool = () => {
@@ -2583,7 +2580,7 @@ function IGCandidates({ state, update }) {
       const w = await fh.createWritable();
       await w.write(buildPool());
       await w.close();
-      if (window.appToast) window.appToast("✓ 已直接存進「" + (dir.name || "指定資料夾") + "」，每日任務讀得到了");
+      if (window.appToast) window.appToast("已直接存進「" + (dir.name || "指定資料夾") + "」，每日任務讀得到了");
     } catch (e) {
       if (e && e.name === "AbortError") return; // 使用者按取消
       downloadPool();
@@ -2600,10 +2597,10 @@ function IGCandidates({ state, update }) {
   const selSt = { padding: "6px 9px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--card2)", font: "inherit" };
   return (
     <details className="dp-bulk" open>
-      <summary>🗂 IG 候選池（{list.length}）——來自四域轉譯所，選日期後才進行事曆</summary>
+      <summary>IG 候選池（{list.length}）——來自四域轉譯所，選日期後才進行事曆</summary>
       <div className="dp-ai-bar" style={{ marginTop: 6 }}>
-        <button className="dp-btn" onClick={exportPool}>⬇ 匯出候選池（給每日任務）</button>
-        {typeof window.showDirectoryPicker === "function" && <button className="dp-btn" onClick={rePickDir}>📁 重選資料夾</button>}
+        <button className="dp-btn" onClick={exportPool}>匯出候選池（給每日任務）</button>
+        {typeof window.showDirectoryPicker === "function" && <button className="dp-btn" onClick={rePickDir}>重選資料夾</button>}
         <span className="dp-hint">第一次會請妳選「IG排程匯入」資料夾，之後按一下就直接存進去；每天 8 點的內容任務會參考候選池排週程</span>
       </div>
       {list.map((c) => (
@@ -2621,8 +2618,8 @@ function IGCandidates({ state, update }) {
               if (e.target.value) autoExportPool(nl);
             }} />
             <span className="dp-hint">{c.status}</span>
-            <button className="dp-btn" onClick={() => schedule(c)} disabled={c.status === "已排" || !!c.eventId}>{c.status === "已排" || c.eventId ? "✓ 已排" : "加入已排"}</button>
-            <button className="dp-x" onClick={() => del(c.id)}>✕</button>
+            <button className="dp-btn" onClick={() => schedule(c)} disabled={c.status === "已排" || !!c.eventId}>{c.status === "已排" || c.eventId ? "已排" : "加入已排"}</button>
+            <button className="dp-x" onClick={() => del(c.id)}>刪除</button>
           </div>
           <input style={{ ...selSt, width: "100%", boxSizing: "border-box", marginTop: 6 }} value={c.topic}
             placeholder="主題（可編輯）" onChange={(e) => setC(c.id, { topic: e.target.value })} />
@@ -2884,7 +2881,7 @@ function IG({ state, update }) {
       </details>
 
       <div className="dp-ai-bar" style={{ marginTop: 8 }}>
-        <button className="dp-btn" onClick={() => autoExportSchedule(state.igPosts, { pick: true })}>⬇ 匯出現行進度（給每日任務）</button>
+        <button className="dp-btn" onClick={() => autoExportSchedule(state.igPosts, { pick: true })}>匯出現行進度（給每日任務）</button>
         <span className="dp-hint">四帳排程會自動寫進「IG排程匯入/ig_現行進度.json」，每日 8 點任務只讀這個檔。第一次按這顆選一次「IG排程匯入」資料夾即可，之後改排程就自動同步。</span>
       </div>
 
@@ -2908,7 +2905,7 @@ function IG({ state, update }) {
 
       {state.igPosts.length > 1 && (
         <div style={{ marginBottom: 12 }}>
-          <button className="dp-btn" onClick={cleanDupes}>🧹 整理重複（同帳號同主題只留最新）</button>
+          <button className="dp-btn" onClick={cleanDupes}>整理重複（同帳號同主題只留最新）</button>
         </div>
       )}
 
@@ -2936,7 +2933,7 @@ function IG({ state, update }) {
                 <div className="dp-ig-acc">
                   {(IG_ACCOUNTS[p.account] || IG_ACCOUNTS.charlotte_wu).label}
                   <span className={"dp-ig-time" + (p.time ? " own" : "")} title={p.time ? "你自己設定的發布時間" : "依帳號與星期推薦的發布時間（可在展開後改）"}>
-                    🕐 {p.time || recTimeOf(p.account, p.type, p.date)}{p.time ? "" : " 推薦"}
+                    {p.time || recTimeOf(p.account, p.type, p.date)}{p.time ? "" : " 推薦"}
                   </span>
                 </div>
                 <div className="dp-ig-topic">
@@ -2945,7 +2942,7 @@ function IG({ state, update }) {
               </div>
               <span className="dp-ig-caret">{openId === p.id ? "▲" : "▼"}</span>
               <button className={"dp-status " + p.status} onClick={(e) => { e.stopPropagation(); cycle(p.id); }}>{p.status}</button>
-              <button className="dp-x" onClick={(e) => { e.stopPropagation(); del(p.id); }}>✕</button>
+              <button className="dp-x" onClick={(e) => { e.stopPropagation(); del(p.id); }}>刪除</button>
             </div>
             {openId === p.id && (
               <div className="dp-igdetail">
@@ -2997,7 +2994,7 @@ function IG({ state, update }) {
               <b style={{ minWidth: 44 }}>{p.date.slice(5)}</b>
               <span style={{ flex: 1 }}><span className="dp-ig-type">{postTypeOf(p.type)}</span> {p.topic}{p.time ? <span className="dp-hint"> · {p.time}</span> : null}</span>
               <button className="dp-btn" onClick={() => cycle(p.id)}>改回未發</button>
-              <button className="dp-x" onClick={() => del(p.id)}>✕</button>
+              <button className="dp-x" onClick={() => del(p.id)}>刪除</button>
             </div>
           ))}
         </details>
@@ -3153,19 +3150,19 @@ function Trends({ state, update, go }) {
       <div className="dp-trend-main">
 
       <div className="dp-ai">
-        <div className="dp-ai-t">✦ 一鍵產生搜尋指令</div>
+        <div className="dp-ai-t">一鍵產生搜尋指令</div>
         <p className="dp-ai-sub">點分類自動複製指令，貼回 Claude 對話，我會用網路搜尋幫你整理當天新聞，再貼回下方收藏。</p>
         <div className="dp-newscats">
           {NEWS_CATS.map((c) => (
             <button key={c.key} className={"dp-newscat" + (copied === c.key ? " copied" : "")} onClick={() => copyCmd(c)}>
-              {copied === c.key ? "已複製 ✓" : c.key}
+              {copied === c.key ? "已複製" : c.key}
             </button>
           ))}
         </div>
       </div>
 
       <div className="dp-ai">
-        <div className="dp-ai-t">✦ 收藏重點</div>
+        <div className="dp-ai-t">收藏重點</div>
         <p className="dp-ai-sub">把我（在對話裡）整理好的新聞重點、或電子報內容貼進來，按「直接收藏」即可存檔，一行一則。手機上請用「直接收藏」；電腦上可另用 AI 自動摘要。</p>
         <input className="dp-src" placeholder="分類 / 來源（選填，如 AI動態、The Verge）"
           value={src} onChange={(e) => setSrc(e.target.value)} />
@@ -3188,7 +3185,7 @@ function Trends({ state, update, go }) {
               <span className="dp-tcat">{t.category}</span>
               <span className="dp-tsrc">{t.source}</span>
               <span className="dp-tdate">{t.date.slice(5)}</span>
-              <button className="dp-x" onClick={() => delTrend(t.id)}>✕</button>
+              <button className="dp-x" onClick={() => delTrend(t.id)}>刪除</button>
             </div>
             <div className="dp-trend-body">
               {Array.isArray(t.summary)
@@ -3197,7 +3194,7 @@ function Trends({ state, update, go }) {
             </div>
             <div className="dp-trend-foot">
               <button className="dp-btn" disabled={expandingId === t.id} onClick={() => expandToIdea(t)}>
-                {expandingId === t.id ? "AI 轉譯中…" : (t.expanded ? "✓ 已轉譯" : "→ 轉譯成發想（卡片／心智圖）")}
+                {expandingId === t.id ? "AI 轉譯中…" : (t.expanded ? "已轉譯" : "轉譯成發想（卡片／心智圖）")}
               </button>
               {expandMsg && expandMsg.id === t.id && (
               expandMsg.keyErr
@@ -3205,7 +3202,7 @@ function Trends({ state, update, go }) {
                 : <span className="dp-hint">{expandMsg.text}</span>
             )}
               <button className="dp-btn" disabled={cardingId === t.id} onClick={() => trendToCard(t)}>
-                {cardingId === t.id ? "AI 產卡中…" : (t.carded ? "✓ 已存卡片盒" : "→ 存成卡片盒")}
+                {cardingId === t.id ? "AI 產卡中…" : (t.carded ? "已存卡片盒" : "存成卡片盒")}
               </button>
               {cardMsg && cardMsg.id === t.id && <span className="dp-hint">{cardMsg.text}</span>}
             </div>
@@ -3216,7 +3213,7 @@ function Trends({ state, update, go }) {
 
       <div className="dp-trend-side">
         <div className="dp-mailbox">
-          <div className="dp-ai-t">📮 電子報追蹤</div>
+          <div className="dp-ai-t">電子報追蹤</div>
           <p className="dp-ai-sub">記下訂閱的電子報／寄件人，收到新內容就貼上面收藏或直接轉譯。</p>
           <input className="dp-src" placeholder="寄件人／電子報名稱"
             value={em.sender} onChange={(e) => setEm({ ...em, sender: e.target.value })} />
@@ -3225,7 +3222,7 @@ function Trends({ state, update, go }) {
           <div className="dp-ai-bar"><button className="dp-btn" onClick={addEmail}>加入追蹤</button></div>
           {state.emails.length === 0 && <p className="dp-hint">還沒有追蹤任何電子報。</p>}
           {state.emails.map((m) => (
-            <div key={m.id} className="dp-mail"><b>{m.sender}</b><span>{m.subject}</span><button className="dp-x" onClick={() => delEmail(m.id)}>✕</button></div>
+            <div key={m.id} className="dp-mail"><b>{m.sender}</b><span>{m.subject}</span><button className="dp-x" onClick={() => delEmail(m.id)}>刪除</button></div>
           ))}
         </div>
       </div>
@@ -3299,7 +3296,7 @@ function Journal({ state, update }) {
 
       <div className="dp-ai-bar gen">
         <button className="dp-btn solid" disabled={busy} onClick={generate}>
-          {busy ? "AI 撰寫中…" : "✦ 生成手帳草稿"}
+          {busy ? "AI 撰寫中…" : "生成手帳草稿"}
         </button>
         {err && <span className="dp-err">{err}</span>}
       </div>
@@ -3511,7 +3508,7 @@ function autoZettelB(idea, curState) {
   const srcCard = {
     id: srcId, num: String(n), date: todayISO(), links: insCards.map((c) => c.id), type: "permanent",
     title: "來源索引：" + idea.title,
-    content: (idea.method ? "🔑 " + idea.method + "\n" : "")
+    content: (idea.method ? "底層方法：" + idea.method + "\n" : "")
       + "證據等級：" + ((idea.sourceInfo && idea.sourceInfo.evidenceLevel) || "C")
       + (ins.length ? "\n攻略原子：\n" + insCards.map((c) => "・" + c.title).join("\n") : "")
       + ((idea.sourceInfo && idea.sourceInfo.url) ? "\n\n來源：" + idea.sourceInfo.url
@@ -3546,7 +3543,7 @@ function autoZettel(idea, curState) {
     id: uid(), num: String(curState.zettel.length + 1), date: todayISO(), links: [],
     type: "permanent",
     title: idea.title,
-    content: (idea.method ? "🔑 " + idea.method + "\n" : "") + (idea.summary || []).join("\n")
+    content: (idea.method ? "底層方法：" + idea.method + "\n" : "") + (idea.summary || []).join("\n")
       + (idea.source && idea.source !== "手動收藏" ? "\n\n來源：" + idea.source : ""),
     tags: [idea.category, "轉譯所"].filter(Boolean),
   };
@@ -3569,8 +3566,8 @@ function Ideas({ state, update, go }) {
 
   const doReadUrl = async () => {
     const v = validateFetchUrl(url);
-    if (!v.ok) { setUrlStatus("⚠ " + v.msg); return; }
-    if (typeof navigator !== "undefined" && navigator.onLine === false) { setUrlStatus("⚠ 目前離線：讀取網址需要網路，可先改貼全文。"); return; }
+    if (!v.ok) { setUrlStatus(v.msg); return; }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) { setUrlStatus("目前離線：讀取網址需要網路，可先改貼全文。"); return; }
     setReading(true); setReadInfo(null); setUrlTitle("");
     setUrlStatus("讀取中…（直接讀取被擋時會自動改走備援服務）");
     try {
@@ -3580,14 +3577,14 @@ function Ideas({ state, update, go }) {
       setUrlTitle(r.title || "（無法確認標題）");
       setReadInfo(r);
       if (r.text.length < URL_READ.MIN_CHARS) {
-        setUrlStatus("⚠ 只讀到 " + r.text.length + " 字，可能沒抓到正文——請檢查下方文字，不足就改貼全文。");
+        setUrlStatus("只讀到 " + r.text.length + " 字，可能沒抓到正文——請檢查下方文字，不足就改貼全文。");
       } else {
-        setUrlStatus("✓ " + (r.readStatus === "direct" ? "直接讀取成功" : "已透過" + URL_READ.FALLBACK_NAME + "讀取")
+        setUrlStatus((r.readStatus === "direct" ? "直接讀取成功" : "已透過" + URL_READ.FALLBACK_NAME + "讀取")
           + "，擷取 " + r.text.length + " 字" + (r.truncated ? "（超過上限已截斷，僅會分析前段）" : "")
           + (v.warn ? "；" + v.warn : "") + "。請先確認下方正文再開始轉譯。");
       }
     } catch (e) {
-      setUrlStatus("✗ 無法自動讀取：" + e.message + "。請把文章正文貼到下方欄位，網址會保留作為來源。");
+      setUrlStatus("無法自動讀取：" + e.message + "。請把文章正文貼到下方欄位，網址會保留作為來源。");
       setSrc(url.trim());
     }
     setReading(false);
@@ -3698,7 +3695,7 @@ function Ideas({ state, update, go }) {
       </header>
 
       <div className="dp-ai">
-        <div className="dp-ai-t">✦ 網址 / 全文 → 來源查核 → 四域轉譯 → 四帳適配</div>
+        <div className="dp-ai-t">網址／全文，先查核來源，再四域轉譯、四帳適配</div>
         <p className="dp-ai-sub">貼公開文章網址按「讀取網址」，或直接把全文貼進下方欄位（永遠可用的備援）。部分網站因登入、付費牆或安全限制無法自動讀取，改貼全文即可。</p>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input className="dp-src" style={{ flex: "1 1 200px" }} placeholder="公開文章網址（https://…）"
@@ -3734,7 +3731,7 @@ function Ideas({ state, update, go }) {
       </details>
 
       <details className="dp-bulk">
-        <summary>📡 資訊收集區（一鍵搜尋指令・收藏重點 {state.trends.length} 則・電子報追蹤 {state.emails.length}）</summary>
+        <summary>資訊收集區（一鍵搜尋指令・收藏重點 {state.trends.length} 則・電子報追蹤 {state.emails.length}）</summary>
         <Trends state={state} update={update} go={go} />
       </details>
 
@@ -3808,7 +3805,7 @@ function IdeaCard({ idea, onDel, state, update }) {
         + (p.cta ? "CTA：" + p.cta + "\n" : "")
         + (p.assets && p.assets.length ? "素材：" + p.assets.join("、") + "\n" : "")
         + (p.monetizationPath ? "變現承接：" + p.monetizationPath + "\n" : "")
-        + (p.verificationNeeded && p.verificationNeeded.length ? "⚠ 待查證：" + p.verificationNeeded.join("、") + "\n" : "")
+        + (p.verificationNeeded && p.verificationNeeded.length ? "待查證：" + p.verificationNeeded.join("、") + "\n" : "")
         + (p.risk ? "風險：" + p.risk + "\n" : "")
         + (idea.sourceInfo && idea.sourceInfo.url ? "來源：" + idea.sourceInfo.url : ""),
     };
@@ -3943,22 +3940,22 @@ function IdeaCard({ idea, onDel, state, update }) {
           <button className={layout === "card" ? "on" : ""} onClick={() => setLayout("card")}>卡片</button>
           <button className={layout === "tree" ? "on" : ""} onClick={() => setLayout("tree")}>心智圖</button>
         </div>
-        <button className="dp-x" onClick={onDel}>✕</button>
+        <button className="dp-x" onClick={onDel}>刪除</button>
       </div>
 
       <h3 className="dp-idea-title">{idea.title}</h3>
-      <p className="dp-idea-tip">💡 點任一個聯想方框，就能用復盤框架引導你自己思考。</p>
+      <p className="dp-idea-tip">點任一個聯想方框，就能用復盤框架引導你自己思考。</p>
 
       {idea.sourceInfo && (idea.sourceInfo.url || idea.sourceInfo.readStatus) && (
         <p className="dp-hint" style={{ margin: "0 0 8px" }}>
-          📎 {idea.sourceInfo.url
+          來源 {idea.sourceInfo.url
             ? <a href={idea.sourceInfo.url} target="_blank" rel="noreferrer">{idea.sourceInfo.title || idea.sourceInfo.url}</a>
             : (idea.sourceInfo.title || "手動貼入")}
           {(() => { try { return idea.sourceInfo.url ? "｜" + new URL(idea.sourceInfo.url).hostname.replace(/^www\./, "") : ""; } catch (e) { return ""; } })()}
           ｜作者：{idea.sourceInfo.author || "無法確認"}
           ｜讀取：{({ direct: "直接讀取", fallback: "備援服務", manual: "手動貼入", partial: "部分" })[idea.sourceInfo.readStatus] || idea.sourceInfo.readStatus}
           ｜證據等級 {idea.sourceInfo.evidenceLevel}
-          {idea.sourceInfo.truncated ? "｜⚠ 正文曾截斷，結果不代表完整文章" : ""}
+          {idea.sourceInfo.truncated ? "｜正文曾截斷，結果不代表完整文章" : ""}
         </p>
       )}
 
@@ -4041,14 +4038,14 @@ function IdeaCard({ idea, onDel, state, update }) {
                         + (p.cta ? "CTA：" + p.cta + "\n" : "")
                         + (p.assets && p.assets.length ? "素材：" + p.assets.join("、") + "\n" : "")
                         + (p.monetizationPath ? "變現承接：" + p.monetizationPath + "\n" : "")
-                        + (p.verificationNeeded && p.verificationNeeded.length ? "⚠ 待查證：" + p.verificationNeeded.join("、") + "\n" : "")
+                        + (p.verificationNeeded && p.verificationNeeded.length ? "待查證：" + p.verificationNeeded.join("、") + "\n" : "")
                         + (p.risk ? "風險：" + p.risk : "")}
                     </div>
                     {(() => {
                       const inPosts = (state.igPosts || []).some((pp) => pp.ideaId === idea.id && pp.account === p.account);
-                      if (inPosts) return <span className="dp-hint" style={{ display: "inline-block", marginTop: 7 }}>✓ 已排入行事曆</span>;
+                      if (inPosts) return <span className="dp-hint" style={{ display: "inline-block", marginTop: 7 }}>已排入行事曆</span>;
                       const inPool = (state.igCandidates || []).some((cc) => cc.ideaId === idea.id && cc.account === p.account);
-                      if (inPool) return <span className="dp-hint" style={{ display: "inline-block", marginTop: 7 }}>✓ 已在候選池（到 IG 分頁排期）</span>;
+                      if (inPool) return <span className="dp-hint" style={{ display: "inline-block", marginTop: 7 }}>已在候選池（到 IG 分頁排期）</span>;
                       return <button className="dp-btn" style={{ marginTop: 7 }} onClick={() => addCandidate(p)}>＋ 加入 IG 候選池</button>;
                     })()}
                   </details>
@@ -4067,7 +4064,7 @@ function IdeaCard({ idea, onDel, state, update }) {
             </div>
           )}
           {idea.method && (
-            <div className="dp-idea-method"><b>🔑 底層方法</b>{idea.method}</div>
+            <div className="dp-idea-method"><b>底層方法</b>{idea.method}</div>
           )}
         </>
       ) : (
@@ -4082,13 +4079,13 @@ function IdeaCard({ idea, onDel, state, update }) {
               </div>
             ))}
           </div>
-          {idea.method && <div className="dp-tree-method"><b>🔑 最有價值的底層方法</b><span>{idea.method}</span></div>}
+          {idea.method && <div className="dp-tree-method"><b>最有價值的底層方法</b><span>{idea.method}</span></div>}
         </div>
       )}
 
       <div className="dp-ai-bar">
         <button className="dp-btn" disabled={carding} onClick={toCard}>
-          {carding ? "AI 精煉中…" : (idea.carded ? "✓ 已有卡片・AI 再精煉一張" : "→ AI 精煉存入卡片盒")}
+          {carding ? "AI 精煉中…" : (idea.carded ? "已有卡片・AI 再精煉一張" : "AI 精煉存入卡片盒")}
         </button>
         {!(idea.insights && idea.insights.length) && (
           <button className="dp-btn" disabled={upgrading} onClick={upgrade}>
@@ -4113,7 +4110,7 @@ function IdeaCard({ idea, onDel, state, update }) {
           <summary>歷次復盤 {myReviews.length} 篇</summary>
           {myReviews.map((r) => (
             <div key={r.id} className="dp-rvitem">
-              <div className="dp-rvitem-top"><b>{r.topic}</b><span>{r.date.slice(5)}</span><button className="dp-x" onClick={() => delReview(r.id)}>✕</button></div>
+              <div className="dp-rvitem-top"><b>{r.topic}</b><span>{r.date.slice(5)}</span><button className="dp-x" onClick={() => delReview(r.id)}>刪除</button></div>
               {r.note && <div className="dp-rvnote">{r.quick ? "一句話：" : ""}{r.note}</div>}
               <div className="dp-rvcols">
                 <div><span className="dp-rvc keep">保留</span>{(r.keep || []).map((x, i) => <p key={i}>{x}</p>)}</div>
@@ -4196,15 +4193,15 @@ function Review({ topic, onClose, onSave, onImport }) {
     <div className="dp-review">
       <div className="dp-review-h">
         <div><span className="dp-review-tag">復盤</span> {topic}</div>
-        <button className="dp-x" onClick={onClose}>✕</button>
+        <button className="dp-x" onClick={onClose}>關閉</button>
       </div>
 
       {phase === "setup" && (
         <div className="dp-review-setup">
           <p className="dp-ai-sub">為「{topic}」量身出題最準。電腦版可直接自動出題；手機若連不上，改用「複製出題指令」貼給對話裡的我，再把題目貼回下方。</p>
           <div className="dp-ai-bar" style={{ marginTop: 0 }}>
-            <button className="dp-btn solid" disabled={genBusy} onClick={autoGen}>{genBusy ? "AI 出題中…" : "✦ 自動出題"}</button>
-            <button className="dp-btn" onClick={copyPrompt}>{copied ? "指令已複製 ✓" : "複製出題指令"}</button>
+            <button className="dp-btn solid" disabled={genBusy} onClick={autoGen}>{genBusy ? "AI 出題中…" : "自動出題"}</button>
+            <button className="dp-btn" onClick={copyPrompt}>{copied ? "指令已複製" : "複製出題指令"}</button>
             <button className="dp-btn" onClick={() => startWith(REVIEW_Q)}>用通用題</button>
           </div>
           <textarea className="dp-ta" rows={4} style={{ marginTop: 11 }}
@@ -4519,7 +4516,7 @@ function Zettel({ state, update, openCard }) {
   // AI 連結建議面板（卡片／心智圖兩個視圖共用）
   const sugPanel = (linkSugs && linkSugs.length > 0) ? (
     <div className="dp-ai" style={{ marginBottom: 12 }}>
-      <div className="dp-ai-t">✦ AI 連結建議（按「接受」才會建立，不會自己動手）</div>
+      <div className="dp-ai-t">AI 連結建議（按「接受」才會建立，不會自己動手）</div>
       {linkSugs.map((s) => (
         <div key={s.aId + s.bId} className="dp-zsug">
           <span className="dp-zsug-t">「{s.aTitle}」 ↔ 「{s.bTitle}」</span>
@@ -4558,23 +4555,23 @@ function Zettel({ state, update, openCard }) {
           <div className="dp-zc-top">
             <span className="dp-zc-tag" style={{ background: m.color }}>{selCard.num} · {m.label}</span>
             <span className="dp-tdate">{selCard.date}</span>
-            <button className="dp-x" onClick={() => del(selCard.id)}>✕</button>
+            <button className="dp-x" onClick={() => del(selCard.id)}>刪除</button>
           </div>
           <h2 className="dp-zc-title">{selCard.title}{" "}
-            <button className="dp-btn" style={{ fontSize: 12, padding: "2px 10px", verticalAlign: "middle" }} onClick={() => renameCard(selCard)}>✏ 改標題</button>{" "}
-            <button className="dp-btn" style={{ fontSize: 12, padding: "2px 10px", verticalAlign: "middle" }} onClick={() => (editForm && editForm.id === selCard.id) ? setEditForm(null) : startEdit(selCard)}>{(editForm && editForm.id === selCard.id) ? "取消編輯" : "✎ 編輯內容"}</button>{" "}
+            <button className="dp-btn" style={{ fontSize: 12, padding: "2px 10px", verticalAlign: "middle" }} onClick={() => renameCard(selCard)}>改標題</button>{" "}
+            <button className="dp-btn" style={{ fontSize: 12, padding: "2px 10px", verticalAlign: "middle" }} onClick={() => (editForm && editForm.id === selCard.id) ? setEditForm(null) : startEdit(selCard)}>{(editForm && editForm.id === selCard.id) ? "取消編輯" : "編輯內容"}</button>{" "}
             {String(selCard.content || "").length > 300 && (
-              <button className="dp-btn" style={{ fontSize: 12, padding: "2px 10px", verticalAlign: "middle" }} disabled={sumBusy} onClick={() => aiSummarize(selCard)}>{sumBusy ? "AI 摘要中…" : (selCard.aiSummary ? "↻ 重新摘要" : "✦ AI 摘要")}</button>
+              <button className="dp-btn" style={{ fontSize: 12, padding: "2px 10px", verticalAlign: "middle" }} disabled={sumBusy} onClick={() => aiSummarize(selCard)}>{sumBusy ? "AI 摘要中…" : (selCard.aiSummary ? "重新摘要" : "AI 摘要")}</button>
             )}
             {selCard.type === "fleeting" && (
-              <button className="dp-btn" style={{ fontSize: 12, padding: "2px 10px", verticalAlign: "middle" }} onClick={async () => { if (await window.appConfirm("升級為永久筆記？建議先按「✎ 編輯內容」把想法改寫成自己的話、加上 [[連結]]。現在就升級嗎？")) update({ zettel: state.zettel.map((c) => c.id === selCard.id ? { ...c, type: "permanent" } : c) }); }}>⬆ 升級永久</button>
+              <button className="dp-btn" style={{ fontSize: 12, padding: "2px 10px", verticalAlign: "middle" }} onClick={async () => { if (await window.appConfirm("升級為永久筆記？建議先按「編輯內容」把想法改寫成自己的話、加上 [[連結]]。現在就升級嗎？")) update({ zettel: state.zettel.map((c) => c.id === selCard.id ? { ...c, type: "permanent" } : c) }); }}>升級永久</button>
             )}
           </h2>
           {sumMsg && <p className="dp-err" style={{ margin: "4px 0" }}>{sumMsg}</p>}
           {selCard.aiSummary && (
             <blockquote className="dp-zc-sum">
-              <button className="dp-x" style={{ float: "right" }} title="刪除摘要" onClick={() => delSummary(selCard)}>✕</button>
-              <b>✦ AI 摘要</b>
+              <button className="dp-x" style={{ float: "right" }} title="刪除摘要" onClick={() => delSummary(selCard)}>刪除</button>
+              <b>AI 摘要</b>
               <p>{selCard.aiSummary}</p>
             </blockquote>
           )}
@@ -4670,13 +4667,13 @@ function Zettel({ state, update, openCard }) {
           {linkTo && <p className="dp-hint" style={{ margin: "2px 0 0" }}>建立後會自動連到目前的中心卡片。</p>}
           <input className="dp-src" placeholder="標題（寫成一個觀點，例如：被問問題比自己想更能逼出盲點）"
             value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          <textarea className="dp-ta" rows={4} placeholder="內容（用自己的話寫；或貼素材後按「✦ AI 產卡」自動濃縮）"
+          <textarea className="dp-ta" rows={4} placeholder="內容（用自己的話寫；或貼素材後按「AI 產卡」自動濃縮）"
             value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
           <input className="dp-src" style={{ marginTop: 9 }} placeholder="標籤（用逗號分隔，如 復盤, 學習法）"
             value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
           <div className="dp-ai-bar">
             <button className="dp-btn solid" onClick={submitForm}>建立卡片</button>
-            <button className="dp-btn" disabled={busy} onClick={autoCard}>{busy ? "AI 產卡中…" : "✦ AI 產卡（建議電腦版）"}</button>
+            <button className="dp-btn" disabled={busy} onClick={autoCard}>{busy ? "AI 產卡中…" : "AI 產卡（建議電腦版）"}</button>
             {msg && <span className="dp-hint">{msg}</span>}
           </div>
         </div>
@@ -4693,13 +4690,13 @@ function Zettel({ state, update, openCard }) {
       {zView === "grid" ? (
       <>
       <div className="dp-zsearch">
-        <input placeholder="🔍 搜尋卡片內容…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input placeholder="搜尋卡片內容…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
       {cards.length >= 2 && (
         <div className="dp-ai-bar" style={{ marginTop: 0, marginBottom: 12, flexWrap: "wrap" }}>
-          <button className="dp-btn" disabled={linking} onClick={aiLink}>{linking ? "AI 分析關聯中…" : "✦ AI 建議連結"}</button>
-          <button className="dp-btn" disabled={wkBusy} onClick={weekReview}>{wkBusy ? "整理本週中…" : "📅 本週回顧"}</button>
+          <button className="dp-btn" disabled={linking} onClick={aiLink}>{linking ? "AI 分析關聯中…" : "AI 建議連結"}</button>
+          <button className="dp-btn" disabled={wkBusy} onClick={weekReview}>{wkBusy ? "整理本週中…" : "本週回顧"}</button>
           {linkMsg && <span className="dp-hint">{linkMsg}</span>}
           {wkMsg && <span className="dp-hint">{wkMsg}</span>}
         </div>
@@ -4722,7 +4719,7 @@ function Zettel({ state, update, openCard }) {
             <button key={t} className={"dp-igf" + (filterTag === t ? " on" : "")} onClick={() => setFilterTag(t === filterTag ? null : t)}>#{t}</button>
           ))}
           {!showAllTags && filterTag && allTags.indexOf(filterTag) >= 12 && (
-            <button className="dp-igf on" onClick={() => setFilterTag(null)}>#{filterTag} ✕</button>
+            <button className="dp-igf on" onClick={() => setFilterTag(null)}>#{filterTag} 取消</button>
           )}
           {allTags.length > 12 && (
             <button className="dp-igf dp-igf-more" onClick={() => setShowAllTags(!showAllTags)}>
@@ -4740,7 +4737,7 @@ function Zettel({ state, update, openCard }) {
             <div key={c.id} className="dp-zcard" style={{ borderLeftColor: m.color }}
               onClick={() => setSel(c.id)} role="button" tabIndex={0}
               onKeyDown={(e) => e.key === "Enter" && setSel(c.id)}>
-              <button className="dp-zcard-del" onClick={(e) => { e.stopPropagation(); del(c.id); }} title="刪除">✕</button>
+              <button className="dp-zcard-del" onClick={(e) => { e.stopPropagation(); del(c.id); }} title="刪除">刪除</button>
               <div className="dp-zc-meta" style={{ color: m.color }}>{c.num} · {m.label}{c.type === "fleeting" && <span className="dp-zc-todo">待整理</span>}</div>
               <div className="dp-zc-h">{c.title}</div>
               <div className="dp-zc-excerpt">{c.content}</div>
@@ -4757,7 +4754,7 @@ function Zettel({ state, update, openCard }) {
       <>
         <div className="dp-ai-bar" style={{ marginBottom: 10, flexWrap: "wrap" }}>
           {focusCard && <button className="dp-btn solid" onClick={() => { setLinkTo(focusCard.id); setAdding(true); }}>＋ 新增卡片並連到中心</button>}
-          {cards.length >= 2 && <button className="dp-btn" disabled={linking} onClick={aiLink}>{linking ? "AI 分析關聯中…" : "✦ AI 建議連結"}</button>}
+          {cards.length >= 2 && <button className="dp-btn" disabled={linking} onClick={aiLink}>{linking ? "AI 分析關聯中…" : "AI 建議連結"}</button>}
           {linkMsg && <span className="dp-hint">{linkMsg}</span>}
         </div>
         {sugPanel}
@@ -4802,7 +4799,7 @@ function Zettel({ state, update, openCard }) {
           </div>
           {orphans.length > 0 && (
             <div style={{ marginTop: 10 }}>
-              <div className="dp-idea-h">🍂 孤兒卡 {orphans.length} 張（還沒有任何連結，點開加連結）</div>
+              <div className="dp-idea-h">孤兒卡 {orphans.length} 張（還沒有任何連結，點開加連結）</div>
               <div className="dp-igfilter">
                 {orphans.slice(0, 30).map((c) => (
                   <button key={c.id} className="dp-igf" style={{ borderColor: "var(--accent)", color: "var(--accent)" }} onClick={() => setSel(c.id)}>{c.num}·{(c.title || "").slice(0, 14)}{(c.title || "").length > 14 ? "…" : ""}</button>
@@ -4857,7 +4854,7 @@ function Done({ state, update }) {
             {byDate[d].map((it) =>
               it.kind === "todo" ? (
                 <div key={it.key} className="dp-doneitem">
-                  <span className="dp-donecheck">✓</span>
+                  <span className="dp-donecheck" />
                   <span className="dp-donetext">{it.todo.text}</span>
                   <button className="dp-btn dp-donereopen" onClick={() => reopen(it.key)}>重啟</button>
                 </div>
@@ -4879,7 +4876,7 @@ function Done({ state, update }) {
       {journals.length === 0 ? <Empty>還沒有存過手帳草稿。</Empty> : (
         journals.map((j) => (
           <div key={j.id} className="dp-jpast">
-            <div className="dp-rvitem-top"><b>{j.date}</b><button className="dp-x" onClick={() => delJournal(j.id)}>✕</button></div>
+            <div className="dp-rvitem-top"><b>{j.date}</b><button className="dp-x" onClick={() => delJournal(j.id)}>刪除</button></div>
             <pre>{j.text}</pre>
           </div>
         ))
@@ -5223,7 +5220,7 @@ function Supplies({ state, update }) {
           <input type="number" min="0" placeholder="選填" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></label>
         <button className="dp-btn solid" onClick={add}>新增</button>
       </div>
-      <p className="dp-hint" style={{ marginTop: 4 }}>沒填「到期/該換日」時，會用「基準日＋週期天數」自動算。濾心、加熱棒填週期最方便；換新後按 ↻ 就自動順延一輪。</p>
+      <p className="dp-hint" style={{ marginTop: 4 }}>沒填「到期/該換日」時，會用「基準日＋週期天數」自動算。濾心、加熱棒填週期最方便；換新後按「順延」就自動延一輪。</p>
 
       <div className="dp-ig-count" style={{ marginTop: 12 }}>
         {overN > 0 && <span style={{ color: "var(--accent)" }}>逾期 <b>{overN}</b> 項　</span>}
@@ -5249,8 +5246,8 @@ function Supplies({ state, update }) {
                 </div>
               </div>
               <span className={"dp-sup-due " + st.k}>{st.txt}</span>
-              {x.intervalDays > 0 && <button className="dp-x" title="已更換，順延一輪" style={{ color: "var(--brand)", fontSize: 16 }} onClick={() => renew(x.id)}>↻</button>}
-              <button className="dp-x" onClick={() => del(x.id)}>✕</button>
+              {x.intervalDays > 0 && <button className="dp-x" title="已更換，順延一輪" style={{ color: "var(--brand)" }} onClick={() => renew(x.id)}>順延</button>}
+              <button className="dp-x" onClick={() => del(x.id)}>刪除</button>
             </div>
           );
         })}
@@ -5267,8 +5264,8 @@ const LIB_STATUS = {
 };
 const libStatusOf = (k) => LIB_STATUS[k] || LIB_STATUS.want;
 const LIB_CFG = {
-  novel: { key: "novels", eyebrow: "閱讀紀錄", title: "我的小說", namePh: "書名…", authorPh: "作者…", progPh: "看到第幾章（選填）", placeholder: "📖" },
-  comic: { key: "comics", eyebrow: "追漫紀錄", title: "我的漫畫", namePh: "漫畫名…", authorPh: "作者 / 出版社…", progPh: "看到第幾卷／話（選填）", placeholder: "📚" },
+  novel: { key: "novels", eyebrow: "閱讀紀錄", title: "我的小說", namePh: "書名…", authorPh: "作者…", progPh: "看到第幾章（選填）", placeholder: "書" },
+  comic: { key: "comics", eyebrow: "追漫紀錄", title: "我的漫畫", namePh: "漫畫名…", authorPh: "作者 / 出版社…", progPh: "看到第幾卷／話（選填）", placeholder: "漫" },
 };
 // 上傳圖片 → 等比縮成縮圖 dataURL，避免 localStorage（約 5MB）被大圖塞爆
 function fileToThumb(file, max = 240) {
@@ -5455,7 +5452,7 @@ function Backup({ state, restoreAll }) {
       const encrypted = await encryptData(slim, cloudCfg.phrase);
       const payloadKB = Math.round((encrypted.length + 40) / 1024);
       if ((encrypted.length + 40) > CLOUD_LIMIT_BYTES) {
-        setCloudMsg("❌ 資料太大：加密壓縮後約 " + payloadKB + " KB，超過單筆上限。最占空間：" + bulkBreakdown(slim) + "。請清掉一些舊資料再試。");
+        setCloudMsg("!資料太大：加密壓縮後約 " + payloadKB + " KB，超過單筆上限。最占空間：" + bulkBreakdown(slim) + "。請清掉一些舊資料再試。");
         setCloudBusy(false); return;
       }
       const ts = Date.now();
@@ -5469,9 +5466,9 @@ function Backup({ state, restoreAll }) {
         throw new Error(res.status + (sm ? "|" + sm : ""));
       }
       await markSynced(ts);
-      setCloudMsg("✅ 已加密推送（約 " + payloadKB + " KB" + (stat.count ? "，已剔除 " + stat.count + " 張封面圖，僅留本機" : "") + "）｜" + new Date().toLocaleTimeString("zh-TW"));
+      setCloudMsg("已加密推送（約 " + payloadKB + " KB" + (stat.count ? "，已剔除 " + stat.count + " 張封面圖，僅留本機" : "") + "）｜" + new Date().toLocaleTimeString("zh-TW"));
     } catch (e) {
-      setCloudMsg("❌ 推送失敗：" + cloudErrMsg(e));
+      setCloudMsg("!推送失敗：" + cloudErrMsg(e));
     }
     setCloudBusy(false);
   };
@@ -5498,9 +5495,9 @@ function Backup({ state, restoreAll }) {
       const data = await decryptData(wrapper.enc, cloudCfg.phrase);
       restoreAll(restoreLocalThumbs(data, state));
       await markSynced(wrapper.ts || Date.now());
-      setCloudMsg("✅ 解密還原完成｜" + new Date().toLocaleTimeString("zh-TW"));
+      setCloudMsg("解密還原完成｜" + new Date().toLocaleTimeString("zh-TW"));
     } catch (e) {
-      setCloudMsg("❌ 拉取失敗：" + cloudErrMsg(e));
+      setCloudMsg("!拉取失敗：" + cloudErrMsg(e));
     }
     setCloudBusy(false);
   };
@@ -5518,7 +5515,7 @@ function Backup({ state, restoreAll }) {
       const encrypted = await encryptData(stripThumbsForCloud(state), phrase);
       const payloadKB = Math.round((encrypted.length + 40) / 1024);
       if ((encrypted.length + 40) > CLOUD_LIMIT_BYTES) {
-        setCloudMsg("❌ 資料太大：加密壓縮後約 " + payloadKB + " KB，超過單筆上限。請先清掉舊資料再建立雲端。最占空間：" + bulkBreakdown(stripThumbsForCloud(state)) + "。");
+        setCloudMsg("!資料太大：加密壓縮後約 " + payloadKB + " KB，超過單筆上限。請先清掉舊資料再建立雲端。最占空間：" + bulkBreakdown(stripThumbsForCloud(state)) + "。");
         setCloudBusy(false); return;
       }
       setCloudMsg("建立 GitHub Gist 中…（資料加密後約 " + payloadKB + " KB）");
@@ -5541,9 +5538,9 @@ function Backup({ state, restoreAll }) {
       // 儲存設定（GitHub Token 與 Gist Id 存本機；phrase 是另一把獨立鑰匙）
       await saveCloudCfg({ apiKey: masterKey, binId, phrase });
       setApiKeyInput(""); setPhraseInput("");
-      setCloudMsg("✅ 建立完成！資料已加密上傳到你的 GitHub Gist。請複製同步金鑰並牢記密語（兩者分開保管）。");
+      setCloudMsg("建立完成！資料已加密上傳到你的 GitHub Gist。請複製同步金鑰並牢記密語（兩者分開保管）。");
     } catch (e) {
-      setCloudMsg("❌ 失敗：" + cloudErrMsg(e));
+      setCloudMsg("!失敗：" + cloudErrMsg(e));
     }
     setCloudBusy(false);
   };
@@ -5565,14 +5562,14 @@ function Backup({ state, restoreAll }) {
     if (!p) { setCloudMsg("請同時填入加密密語。"); return; }
     await saveCloudCfg({ apiKey: parts[0].replace(/\s+/g, ""), binId: parts[1].replace(/\s+/g, ""), phrase: p });
     setTokenInput(""); setPastePhrase("");
-    setCloudMsg("✅ 金鑰與密語已套用！按「⬇ 從雲端拉取」把資料同步過來。");
+    setCloudMsg("金鑰與密語已套用！按「從雲端拉取」把資料同步過來。");
   };
 
   const onChangeModel = async (m) => {
     setModelSel(m);
     setGeminiModel(m);
     try { await window.storage.set(SETTINGS_KEY, JSON.stringify({ geminiKey: getAnthropicKey(), model: m })); } catch (e) {}
-    setCloudMsg("✅ 已切換 AI 模型為「" + ((GEMINI_MODELS.find((x) => x.id === m) || {}).label || m) + "」。");
+    setCloudMsg("已切換 AI 模型為「" + ((GEMINI_MODELS.find((x) => x.id === m) || {}).label || m) + "」。");
   };
   const saveAnthropicKey = async () => {
     const k = keyInput.trim();
@@ -5580,7 +5577,7 @@ function Backup({ state, restoreAll }) {
     setAnthropicKey(k);
     try { await window.storage.set(SETTINGS_KEY, JSON.stringify({ geminiKey: k, model: getGeminiModel() })); } catch (e) {}
     setKeyInput("");
-    setCloudMsg("✅ API Key 已儲存，AI 功能已啟用。");
+    setCloudMsg("API Key 已儲存，AI 功能已啟用。");
   };
 
   const copySyncToken = async () => {
@@ -5751,12 +5748,12 @@ function Backup({ state, restoreAll }) {
       {/* ── 容量儀表 ── */}
       <div className="dp-quota">
         <div className="dp-quota-head">
-          <span>📦 本機儲存空間（估計）</span>
+          <span>本機儲存空間（估計）</span>
           <b style={{ color: quotaColor }}>{(usedChars / 1048576).toFixed(2)} MB / 5 MB（{usedPct}%）</b>
         </div>
         <div className="dp-quota-bar"><span style={{ width: usedPct + "%", background: quotaColor }} /></div>
         {usedPct >= 80 ? (
-          <p className="dp-quota-warn">⚠️ 空間已用超過 8 成！請先下載備份檔，再刪除一些舊資料或書封縮圖，避免之後存檔失敗。</p>
+          <p className="dp-quota-warn">空間已用超過 8 成！請先下載備份檔，再刪除一些舊資料或書封縮圖，避免之後存檔失敗。</p>
         ) : (
           <p className="dp-ai-sub" style={{ marginTop: 8 }}>
             瀏覽器給每個網站約 5MB 空間（含程式快取）。若空間滿了導致存檔失敗，畫面頂端會跳出紅色警告提醒你備份。
@@ -5766,7 +5763,7 @@ function Backup({ state, restoreAll }) {
 
       {/* ── 雲端同步 ── */}
       <div className="dp-ai dp-cloud-box" style={{ borderColor: isConfigured ? "var(--brand)" : "#e5d5b5" }}>
-        <div className="dp-ai-t">☁️ 雲端同步（跨裝置）</div>
+        <div className="dp-ai-t">雲端同步（跨裝置）</div>
 
         {!cloudLoaded ? (
           <p className="dp-ai-sub">讀取設定中…</p>
@@ -5774,24 +5771,24 @@ function Backup({ state, restoreAll }) {
           /* ── 已連線狀態 ── */
           <>
             <div className="dp-cloud-status">
-              <span className="dp-cloud-dot" />雲端同步已連線・資料已加密 🔐
+              <span className="dp-cloud-dot" />雲端同步已連線・資料已加密
             </div>
             <p className="dp-ai-sub" style={{ marginTop: 6 }}>
               <b>推送</b>：加密後存到雲端。<b>拉取</b>：從雲端解密還原到這台。換裝置前先推送，新裝置上先拉取。
             </p>
             <p className="dp-ai-sub" style={{ marginTop: 4 }}>
-              ☁️ 為節省雲端空間，上傳的封面圖片不會同步；其他裝置需自行重新上傳封面。文字資料完整同步（本機備份碼／備份檔不受影響，仍含圖片）。
+              為節省雲端空間，上傳的封面圖片不會同步；其他裝置需自行重新上傳封面。文字資料完整同步（本機備份碼／備份檔不受影響，仍含圖片）。
             </p>
             <div className="dp-ai-bar" style={{ marginTop: 10, flexWrap: "wrap" }}>
               <button className="dp-btn solid" disabled={cloudBusy} onClick={pushToCloud}>
-                {cloudBusy ? "處理中…" : "⬆ 推送到雲端"}
+                {cloudBusy ? "處理中…" : "推送到雲端"}
               </button>
               <button className="dp-btn solid" disabled={cloudBusy} onClick={pullFromCloud}>
-                {cloudBusy ? "處理中…" : "⬇ 從雲端拉取"}
+                {cloudBusy ? "處理中…" : "從雲端拉取"}
               </button>
             </div>
             <div className="dp-ai-bar" style={{ marginTop: 8, flexWrap: "wrap" }}>
-              <button className="dp-btn" onClick={copySyncToken}>📋 複製同步金鑰</button>
+              <button className="dp-btn" onClick={copySyncToken}>複製同步金鑰</button>
               <button className="dp-btn" style={{ color: "var(--muted)" }} onClick={clearCloud}>取消連線</button>
             </div>
             <label className="dp-sync-auto">
@@ -5803,8 +5800,8 @@ function Backup({ state, restoreAll }) {
               自動同步：打開 App 自動拉取最新資料、變更後幾秒自動推送（左側欄會顯示同步狀態；調整此開關後請重新整理生效）
             </label>
             {cloudMsg && (
-              <div className={"dp-import-msg" + (cloudMsg.startsWith("❌") ? " dp-cloud-err" : "")} style={{ marginTop: 10 }}>
-                {cloudMsg}
+              <div className={"dp-import-msg" + (cloudMsg.startsWith("!") ? " dp-cloud-err" : "")} style={{ marginTop: 10 }}>
+                {cloudMsg.replace(/^!/, "")}
               </div>
             )}
           </>
@@ -5856,7 +5853,7 @@ function Backup({ state, restoreAll }) {
                   placeholder="② 設定加密密語（自訂，至少 6 字，換裝置時要填）"
                   value={phraseInput} onChange={(e) => setPhraseInput(e.target.value)} />
                 <p className="dp-ai-sub" style={{ marginTop: 6 }}>
-                  🔐 資料上傳前會在你的裝置上先加密，GitHub Gist 存的是密文。密語不會傳送到任何伺服器。
+                  資料上傳前會在你的裝置上先加密，GitHub Gist 存的是密文。密語不會傳送到任何伺服器。
                 </p>
                 <div className="dp-ai-bar">
                   <button className="dp-btn solid" disabled={cloudBusy || !apiKeyInput.trim() || !phraseInput.trim()} onClick={createBin}>
@@ -5867,8 +5864,8 @@ function Backup({ state, restoreAll }) {
             )}
 
             {cloudMsg && (
-              <div className={"dp-import-msg" + (cloudMsg.startsWith("❌") ? " dp-cloud-err" : "")} style={{ marginTop: 10 }}>
-                {cloudMsg}
+              <div className={"dp-import-msg" + (cloudMsg.startsWith("!") ? " dp-cloud-err" : "")} style={{ marginTop: 10 }}>
+                {cloudMsg.replace(/^!/, "")}
               </div>
             )}
           </>
@@ -5880,10 +5877,10 @@ function Backup({ state, restoreAll }) {
         <div className="dp-ai-t">本機備份（雙重保險）</div>
         <p className="dp-ai-sub">雲端之外再存一份，以防萬一。</p>
         <div className="dp-ai-bar" style={{ marginTop: 6 }}>
-          <button className="dp-btn solid" onClick={downloadFile}>⬇ 下載備份檔</button>
+          <button className="dp-btn solid" onClick={downloadFile}>下載備份檔</button>
           <button className="dp-btn" onClick={copyCode}>複製備份碼</button>
-          <button className="dp-btn" onClick={exportObsidian}>🗂 匯出 Obsidian 筆記</button>
-          <button className="dp-btn" onClick={() => obsidianRef.current && obsidianRef.current.click()}>🗂 匯入 Obsidian 筆記</button>
+          <button className="dp-btn" onClick={exportObsidian}>匯出 Obsidian 筆記</button>
+          <button className="dp-btn" onClick={() => obsidianRef.current && obsidianRef.current.click()}>匯入 Obsidian 筆記</button>
           <input ref={obsidianRef} type="file" accept=".md" multiple style={{ display: "none" }} onChange={importObsidian} />
         </div>
         {showCode && (
@@ -5907,7 +5904,7 @@ function Backup({ state, restoreAll }) {
 
       {/* ── Gemini API Key ── */}
       <div className="dp-ai">
-        <div className="dp-ai-t">🤖 Gemini API Key</div>
+        <div className="dp-ai-t">Gemini API Key</div>
         <p className="dp-ai-sub">
           AI 功能（萃取待辦、手帳草稿、發想卡片、心智圖…）需要 Gemini API Key，完全免費。
           前往 <a className="dp-link" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com</a> 用 Google 帳號登入即可取得，儲存在本機。
@@ -5931,14 +5928,14 @@ function Backup({ state, restoreAll }) {
           </select>
         </div>
         {getAnthropicKey() && (
-          <div className="dp-import-msg" style={{ marginTop: 10 }}>✅ Gemini API Key 已設定，AI 功能正常使用中。</div>
+          <div className="dp-import-msg" style={{ marginTop: 10 }}>Gemini API Key 已設定，AI 功能正常使用中。</div>
         )}
       </div>
 
       {msg && <div className="dp-import-msg" style={{ marginTop: 4 }}>{msg}</div>}
 
       <p className="dp-hint" style={{ marginTop: 16, lineHeight: 1.7 }}>
-        ⚠️ 「從雲端拉取」和「本機還原」都會覆蓋目前資料，操作前請確認方向正確。
+        「從雲端拉取」和「本機還原」都會覆蓋目前資料，操作前請確認方向正確。
       </p>
     </div>
   );
@@ -6049,7 +6046,7 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 
 /* 習慣追蹤器（原子習慣：綠＝完成／紅＝錯過／灰＝不適用；56 天一條） */
 .dp-hab{margin:0 0 18px;padding:12px 13px 10px;background:var(--card2);border:1px solid var(--hair);border-radius:8px}
-.dp-hab-warn{background:#fdece4;border:1px solid #f5c8b0;border-radius:4px;padding:7px 10px;font-size:12.5px;color:#8a3b12;line-height:1.5;margin-bottom:10px}
+.dp-hab-note{background:#faf4e7;border-left:2px solid var(--gold);border-radius:0 4px 4px 0;padding:8px 12px;font-size:13px;color:#6b5324;line-height:1.6;margin-bottom:11px;letter-spacing:.01em}
 .dp-hab-row{display:flex;align-items:center;gap:9px;margin-bottom:7px}
 .dp-hab-name{font-size:12.5px;width:104px;flex:0 0 auto;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
 .dp-hab-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
@@ -6206,7 +6203,7 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-check{width:20px;height:20px;border:2px solid #cdcdc9;border-radius:4px;flex-shrink:0}
 .dp-check:hover{border-color:#26251e}
 .dp-check.on{background:#26251e;border-color:#26251e;position:relative}
-.dp-check.on::after{content:'✓';color:var(--card2);font-size:13px;position:absolute;top:-2px;left:3px}
+.dp-check.on::after{content:'';display:block;width:6px;height:6px;border-radius:2px;background:var(--card2);position:absolute;top:5px;left:5px}
 .dp-todo-b{flex:1;display:flex;flex-direction:column;gap:3px}
 .dp-todo-text{font-size:14.5px}
 .dp-todo-meta{display:flex;gap:8px;align-items:center;font-size:12px;color:#a1a19f}
