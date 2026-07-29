@@ -2204,7 +2204,7 @@ function IGCandidates({ state, update }) {
   if (!list.length) return null;
   const selSt = { padding: "6px 9px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--card2)", font: "inherit" };
   return (
-    <details className="dp-bulk" open>
+    <details className="dp-bulk">
       <summary>IG 候選池（{list.length}）——來自四域轉譯所，選日期後才進行事曆</summary>
       <div className="dp-ai-bar" style={{ marginTop: 6 }}>
         <button className="dp-btn" onClick={exportPool}>匯出候選池（給每日任務）</button>
@@ -3187,7 +3187,7 @@ function ExecBoard({ state, update }) {
     .filter((g) => g.items.length > 0);
 
   return (
-    <details className="dp-bulk" open>
+    <details className="dp-bulk">
       <summary>落實看板（進行中 {doing.length}・已落實 {done.length}）</summary>
       {picks.length === 0 && <Empty>還沒有挑選任何項目。到下方發想卡，在洞察、場域點子或行動旁按「挑選」。</Empty>}
       {groups.map((g) => (
