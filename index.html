@@ -98,8 +98,6 @@ const FALLBACK_CAT = { label: "其他", dot: "var(--muted)", soft: "#eceae5" };
 const catOf      = (k) => CATS[k] || FALLBACK_CAT;
 const igAccOf    = (k) => IG_ACCOUNTS[k] || IG_ACCOUNTS.charlotte_wu;
 const postTypeOf = (k) => POST_TYPES[k] || k || "貼文";
-// 待辦分類：私人／公務
-const scopeLabel = (sc) => sc === "work" ? "公務" : "私人"; // 未分類視為私人
 
 const STORAGE_KEY = "director-planner-v1";
 const LAST_BACKUP_KEY = "director-planner-lastbackup-v1"; // 記錄最後一次下載/複製備份的時間戳，供備份提醒判斷
@@ -109,13 +107,6 @@ const EVENTS_KEY  = "director-planner-events-shared-v1"; // 舊版曾把行事�
 
 const blankState = {
   events: [],
-  todos: [],
-  todoCats: [
-    { id: "tcA", name: "A事件", kind: "event" },
-    { id: "tcB", name: "B事件", kind: "event" },
-    { id: "tcC", name: "C想法", kind: "idea" },
-    { id: "tcD", name: "D想法", kind: "idea" },
-  ],
   igPosts: [],
   igCandidates: [],
   sbBoards: [],
@@ -130,6 +121,7 @@ const blankState = {
   comics: [],
   habits: [],   // 自訂習慣 [{id,name,color,createdAt}]
   habitLog: [], // 習慣打卡紀錄 [{id,key,date}]；key＝內建代號或自訂習慣 id
+  execPicks: [], // 落實看板 [{id,cardId,cardTitle,domain,text,addedAt,status,doneAt}]；domain＝D1-D4｜NA、status＝picked｜done
 };
 
 // 還原備份時過濾非預期欄位，防止惡意 JSON 注入額外狀態
@@ -536,7 +528,6 @@ function App() {
     const has = (...ss) => ss.some((s) => String(s || "").toLowerCase().includes(q));
     const out = [];
     (state.events || []).forEach((e) => { if (has(e.title)) out.push({ tab: "cal", type: "行事曆", text: (e.date || "") + " " + (e.time || "") + " " + (e.title || "") }); });
-    (state.todos || []).forEach((x) => { if (has(x.text, x.owner)) out.push({ tab: "todo", type: "待辦", text: (x.done ? "已完成｜" : "") + (x.text || "") }); });
     (state.zettel || []).forEach((c) => { if (has(c.title, c.content, (c.tags || []).join(" "))) out.push({ tab: "zettel", type: "卡片盒", text: (c.num ? c.num + "·" : "") + (c.title || ""), zid: c.id }); });
     (state.ideas || []).forEach((i) => { if (has(i.title, (Array.isArray(i.summary) ? i.summary : []).join(" "))) out.push({ tab: "ideas", type: "發想", text: i.title || "" }); });
     (state.igPosts || []).forEach((p) => { if (has(p.topic, p.detail)) out.push({ tab: "ig", type: "IG 排程", text: (p.date || "") + " " + (p.topic || "") }); });
@@ -695,7 +686,6 @@ function App() {
   const NAV = [
     { id: "today",   label: "今日",    sub: "Today" },
     { id: "cal",     label: "行事曆",  sub: "Calendar" },
-    { id: "todo",    label: "待辦",    sub: "To-do" },
     { id: "ig",      label: "IG 排程", sub: "Social" },
     { id: "ideas",   label: "四域轉譯所", sub: "Translate" },
     { id: "zettel",  label: "卡片盒",  sub: "Notes" },
@@ -703,7 +693,6 @@ function App() {
     { id: "novel",   label: "小說",    sub: "Novels" },
     { id: "comic",   label: "漫畫",    sub: "Comics" },
     { id: "supplies",label: "補給",    sub: "Supplies" },
-    { id: "done",    label: "完成紀錄", sub: "Log" },
     { id: "backup",  label: "備份",    sub: "Backup" },
   ];
 
@@ -786,7 +775,7 @@ function App() {
         <div className="dp-syncmodal" onClick={() => { setGsOpen(false); setGsQ(""); }}>
           <div className="dp-syncmodal-box" onClick={(e) => e.stopPropagation()}>
             <div className="dp-ai-t">全域搜尋</div>
-            <input className="dp-src" autoFocus placeholder="搜尋行程、待辦、卡片、IG、書目…（↑↓ 選、Enter 跳轉）"
+            <input className="dp-src" autoFocus placeholder="搜尋行程、卡片、IG、書目…（↑↓ 選、Enter 跳轉）"
               value={gsQ} onChange={(e) => { setGsQ(e.target.value); setGsIdx(0); }}
               onKeyDown={(e) => {
                 if (e.key === "Escape") { setGsOpen(false); setGsQ(""); }
@@ -796,7 +785,7 @@ function App() {
               }} />
             <div className="dp-gsres">
               {gsQ.trim() === "" ? (
-                <p className="dp-hint" style={{ margin: "8px 0 0" }}>輸入關鍵字，一次搜遍行程、待辦、卡片盒、發想、IG、趨勢、手帳、書目、補給。</p>
+                <p className="dp-hint" style={{ margin: "8px 0 0" }}>輸入關鍵字，一次搜遍行程、卡片盒、發想、IG、趨勢、手帳、書目、補給。</p>
               ) : gsResults.length === 0 ? (
                 <p className="dp-hint" style={{ margin: "8px 0 0" }}>沒有找到「{gsQ}」。</p>
               ) : (
@@ -851,7 +840,6 @@ function App() {
           <ErrorBoundary key={tab}>
             {tab === "today"   && <Today   state={state} go={setTab} update={update} />}
             {tab === "cal"     && <Calendar state={state} update={update} />}
-            {tab === "todo"    && <Todos    state={state} update={update} />}
             {tab === "ig"      && <IG       state={state} update={update} />}
             {tab === "ideas"   && <Ideas    state={state} update={update} go={setTab} />}
             {tab === "zettel"  && <Zettel   state={state} update={update} openCard={zettelOpen} />}
@@ -859,7 +847,6 @@ function App() {
             {tab === "novel"   && <Library  kind="novel" state={state} update={update} />}
             {tab === "comic"   && <Library  kind="comic" state={state} update={update} />}
             {tab === "supplies"&& <Supplies state={state} update={update} />}
-            {tab === "done"    && <Done     state={state} update={update} />}
             {tab === "backup"  && <Backup   state={state} restoreAll={restoreAll} />}
           </ErrorBoundary>
         )}
@@ -873,7 +860,6 @@ const HABIT_DAYS = 56; // 近 8 週
 const HABIT_BUILTIN = [
   { key: "zettel", name: "回顧卡片", color: "var(--brand)" },
   { key: "review", name: "今日復盤", color: "#9C6FA6" },
-  { key: "todo", name: "清一則待辦", color: "var(--blue)" },
   { key: "ig", name: "IG 有發", color: "var(--accent)" },
 ];
 // 由既有資料推算每個習慣近 56 天的格子；只追「有沒有做」，不追數量
@@ -890,10 +876,9 @@ function habitSeries(state) {
   (state.zettel || []).forEach((c) => { if (c.lastReviewedAt) zSet.add(c.lastReviewedAt); });
   rows.push({ ...HABIT_BUILTIN[0], done: zSet, na: null });
   rows.push({ ...HABIT_BUILTIN[1], done: setOf((state.reviews || []).map((r) => r.date)), na: null });
-  rows.push({ ...HABIT_BUILTIN[2], done: setOf((state.todos || []).map((x) => x.doneAt)), na: null });
   // IG：只有「當天有排定貼文」才計分，沒排的日子算不適用
   const posts = state.igPosts || [];
-  rows.push({ ...HABIT_BUILTIN[3], done: setOf(posts.filter((p) => p.status === "已發").map((p) => p.date)), na: setOf(posts.map((p) => p.date)) });
+  rows.push({ ...HABIT_BUILTIN[2], done: setOf(posts.filter((p) => p.status === "已發").map((p) => p.date)), na: setOf(posts.map((p) => p.date)) });
   (state.habits || []).forEach((h) => {
     rows.push({ key: h.id, name: h.name, color: h.color || "var(--gold)", custom: true, createdAt: h.createdAt, done: logDates(h.id), na: null });
   });
@@ -1038,12 +1023,25 @@ function Today({ state, go, update }) {
     update({ reviews: [{ ...r, id: uid(), ideaId: rvTopic.ideaId, date: t }, ...(state.reviews || [])] });
     setRvTopic(null);
   };
-  const importTodayActions = (acts) => {
-    const todos = acts.filter(Boolean).map((x) => ({ id: uid(), text: x, owner: "", due: "", priority: "中", done: false }));
-    if (todos.length) update({ todos: [...todos, ...state.todos] });
+  const copyTodayActions = async (acts) => {
+    const text = acts.filter(Boolean).join("\n");
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (window.appToast) window.appToast("已複製，可抄進手寫待辦");
+    } catch (e) {
+      let ok = false;
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; ta.style.top = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (e2) {}
+      if (window.appToast) window.appToast(ok ? "已複製，可抄進手寫待辦" : "自動複製失敗，請手動複製。");
+    }
   };
   const todayEvents = state.events.filter((e) => e.date === t);
-  const openTodos = state.todos.filter((x) => !x.done);
   const igToday = state.igPosts.filter((p) => p.date === t);
   const supSoon = (state.supplies || [])
     .filter((x) => x.dueDate)
@@ -1071,7 +1069,6 @@ function Today({ state, go, update }) {
 
       <div className="dp-dash-strip">
         <span className="dp-dash-chip" onClick={() => go("cal")}>今日行程 {todayEvents.length}</span>
-        <span className="dp-dash-chip" onClick={() => go("todo")}>待辦未完 {openTodos.length}</span>
         <span className="dp-dash-chip" onClick={() => go("supplies")}>效期提醒 {supSoon.length}</span>
       </div>
 
@@ -1089,19 +1086,6 @@ function Today({ state, go, update }) {
                   <b>{e.time || "—"}</b> {e.title}
                 </Row>
               ))
-          )}
-        </Card>
-
-        <Card title="未完成待辦" count={openTodos.length} action={() => go("todo")}>
-          {openTodos.length === 0 ? (
-            <Empty>沒有待辦。貼一段 LINE 對話讓 AI 幫你抓。</Empty>
-          ) : (
-            openTodos.slice(0, 5).map((x) => (
-              <Row key={x.id} dot={x.priority === "高" ? "var(--accent)" : "var(--sub)"}>
-                <b style={{ fontSize: 10, fontWeight: 500, color: "var(--card2)", background: x.scope === "work" ? "var(--blue)" : "var(--sub)", borderRadius: 4, padding: "1px 5px", marginRight: 5 }}>{x.scope === "work" ? "公" : "私"}</b>
-                {x.text} {x.due && <span className="dp-due">· {x.due}</span>}
-              </Row>
-            ))
           )}
         </Card>
 
@@ -1184,7 +1168,7 @@ function Today({ state, go, update }) {
 
       {rvTopic && (
         <div style={{ marginTop: 14 }}>
-          <Review key={rvTopic.ideaId + "|" + rvTopic.topic} topic={rvTopic.topic} onClose={() => setRvTopic(null)} onSave={saveTodayReview} onImport={importTodayActions} />
+          <Review key={rvTopic.ideaId + "|" + rvTopic.topic} topic={rvTopic.topic} onClose={() => setRvTopic(null)} onSave={saveTodayReview} onImport={copyTodayActions} />
         </div>
       )}
 
@@ -1507,382 +1491,6 @@ function Calendar({ state, update }) {
           <button className="dp-btn" onClick={addEvent}>加入</button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── TODOS (with LINE → todo AI, text + screenshot) ──────────
-function Todos({ state, update }) {
-  const [mode, setMode] = useState("text"); // text | image
-  const [lineText, setLineText] = useState("");
-  const [imgs, setImgs] = useState([]); // {id, file, url}
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const [quick, setQuick] = useState("");
-  const [bulk, setBulk] = useState("");
-  const [bulkMsg, setBulkMsg] = useState("");
-  const [editId, setEditId] = useState(null);
-  const [editForm, setEditForm] = useState({ text: "", owner: "", due: "", priority: "中", scope: "personal", catId: "" });
-  const [scopeFilter, setScopeFilter] = useState("all");
-  const newTodoScope = () => (scopeFilter === "work" ? "work" : "personal");
-  const fileRef = useRef(null);
-
-  // ── 性質分類（事件＝做完銷掉；想法＝新增時自動同步一張閃現卡進卡片盒累積）──
-  const cats = state.todoCats || [];
-  const [catFilter, setCatFilter] = useState("all"); // all | none | 分類id
-  const [newCat, setNewCat] = useState("");
-  const [newCatKind, setNewCatKind] = useState("event");
-  const catOfTodo = (x) => cats.find((c) => c.id === x.catId) || null;
-  const newTodoCat = () => (catFilter !== "all" && catFilter !== "none" ? catFilter : "");
-  const inCat = (x) => catFilter === "all" || (catFilter === "none" ? !x.catId : x.catId === catFilter);
-  const syncIdeaCard = (added) => {
-    const ideaTodos = (added || []).filter((x) => { const c = cats.find((k) => k.id === x.catId); return c && c.kind === "idea"; });
-    if (ideaTodos.length === 0) return {};
-    let z = state.zettel;
-    ideaTodos.forEach((x) => {
-      const c = cats.find((k) => k.id === x.catId);
-      const t = String(x.text || "").trim();
-      z = [{ id: uid(), num: String(z.length + 1), date: todayISO(), links: [], type: "fleeting",
-        title: t.slice(0, 30) + (t.length > 30 ? "…" : ""), content: t, tags: [c.name, "待辦想法"] }, ...z];
-    });
-    return { zettel: z };
-  };
-  const addCat = () => {
-    const n = newCat.trim();
-    if (!n || cats.some((c) => c.name === n)) return;
-    update({ todoCats: [...cats, { id: uid(), name: n, kind: newCatKind }] });
-    setNewCat("");
-  };
-  const renameCat = (c) => {
-    const nt = window.prompt("分類改名：", c.name);
-    if (nt == null) return;
-    const n = nt.trim();
-    if (n) update({ todoCats: cats.map((k) => k.id === c.id ? { ...k, name: n } : k) });
-  };
-  const delCat = async (c) => {
-    if (!(await window.appConfirm("刪除分類「" + c.name + "」？既有待辦會變成未分類，已同步進卡片盒的卡片不受影響。"))) return;
-    update({ todoCats: cats.filter((k) => k.id !== c.id), todos: state.todos.map((x) => x.catId === c.id ? { ...x, catId: "" } : x) });
-    if (catFilter === c.id) setCatFilter("all");
-  };
-
-  const SYS =
-    "你是親子館館長的助理。從 LINE 對話中萃取待辦事項。只輸出 JSON 陣列，不要任何其他文字或 markdown。每個物件含欄位：text(事項，繁體中文)、owner(負責人，沒寫就填\"\")、due(期限，沒寫就填\"\")、priority(\"高\"或\"中\"或\"低\")。若對話中沒有任何待辦，輸出空陣列 []。";
-
-  const commit = (items) => {
-    const added = (items || []).map((i) => ({
-      id: uid(), text: i.text || "", owner: i.owner || "",
-      due: i.due || "", priority: i.priority || "中", scope: newTodoScope(), catId: newTodoCat(), done: false,
-    })).filter((x) => x.text);
-    if (added.length === 0) { setErr("沒有從內容中找到待辦事項。"); return; }
-    update({ todos: [...added, ...state.todos], ...syncIdeaCard(added) });
-  };
-
-  const extractText = async () => {
-    if (!lineText.trim()) return;
-    setBusy(true); setErr("");
-    try {
-      const out = await callClaude(SYS, "LINE 對話如下：\n\n" + lineText);
-      commit(parseJSON(out));
-      setLineText("");
-    } catch (e) {
-      setErr(aiErrMsg(e, "萃取待辦"));
-    }
-    setBusy(false);
-  };
-
-  const onPickFiles = async (e) => {
-    const files = Array.from(e.target.files || []);
-    const blocks = await Promise.all(
-      files.map(async (f) => ({ id: uid(), url: URL.createObjectURL(f), file: f }))
-    );
-    setImgs((prev) => [...prev, ...blocks]);
-    setErr("");
-    e.target.value = "";
-  };
-  const removeImg = (id) => setImgs((prev) => {
-    const found = prev.find((i) => i.id === id);
-    if (found) URL.revokeObjectURL(found.url);
-    return prev.filter((i) => i.id !== id);
-  });
-
-  const extractImages = async () => {
-    if (imgs.length === 0) return;
-    setBusy(true); setErr("");
-    try {
-      const imageBlocks = await Promise.all(imgs.map((i) => fileToImageBlock(i.file)));
-      const content = [
-        ...imageBlocks,
-        { type: "text", text: "以上是 LINE 對話截圖，請萃取所有待辦事項。" },
-      ];
-      const out = await callClaude(SYS, content);
-      commit(parseJSON(out));
-      imgs.forEach((i) => URL.revokeObjectURL(i.url));
-      setImgs([]);
-    } catch (e) {
-      imgs.forEach((i) => URL.revokeObjectURL(i.url));
-      setImgs([]);
-      setErr(aiErrMsg(e, "讀取截圖"));
-    }
-    setBusy(false);
-  };
-
-  const addQuick = () => {
-    if (!quick.trim()) return;
-    const one = { id: uid(), text: quick.trim(), owner: "", due: "", priority: "中", scope: newTodoScope(), catId: newTodoCat(), done: false };
-    update({ todos: [one, ...state.todos], ...syncIdeaCard([one]) });
-    setQuick("");
-  };
-
-  const importBulk = () => {
-    setBulkMsg("");
-    const txt = bulk.trim();
-    if (!txt) return;
-    let items = [];
-    // try JSON first; fall back to one-todo-per-line
-    try {
-      const arr = parseJSON(txt);
-      if (Array.isArray(arr)) {
-        items = arr.map((i) =>
-          typeof i === "string"
-            ? { text: i }
-            : { text: i.text || i.title || "", owner: i.owner || "", due: i.due || "", priority: i.priority || "中" }
-        );
-      }
-    } catch (e) {
-      items = txt
-        .split("\n")
-        .map((l) => l.replace(/^\s*[\d.、)\-•]+\s*/, "").trim()) // strip "1." "- " bullets
-        .filter(Boolean)
-        .map((t) => ({ text: t }));
-    }
-    const added = items
-      .filter((i) => i.text && i.text.trim())
-      .map((i) => ({ id: uid(), text: i.text.trim(), owner: i.owner || "", due: i.due || "", priority: i.priority || "中", scope: newTodoScope(), catId: newTodoCat(), done: false }));
-    if (added.length === 0) { setBulkMsg("沒有讀到可匯入的待辦。"); return; }
-    update({ todos: [...added, ...state.todos], ...syncIdeaCard(added) });
-    setBulk("");
-    setBulkMsg(`匯入完成：新增 ${added.length} 筆待辦。`);
-  };
-  const toggle = (id) =>
-    update({ todos: state.todos.map((x) => x.id === id ? { ...x, done: !x.done, doneAt: !x.done ? todayISO() : "" } : x) });
-  const del = async (id) => {
-    if (!(await window.appConfirm("確定刪除這筆待辦？"))) return;
-    update({ todos: state.todos.filter((x) => x.id !== id) });
-  };
-
-  const startEdit = (x) => { setEditId(x.id); setEditForm({ text: x.text || "", owner: x.owner || "", due: x.due || "", priority: x.priority || "中", scope: x.scope === "work" ? "work" : "personal", catId: x.catId || "" }); };
-  const saveEdit = () => {
-    const t = (editForm.text || "").trim();
-    if (!t) { setEditId(null); return; }
-    update({ todos: state.todos.map((x) => x.id === editId ? { ...x, text: t, owner: editForm.owner || "", due: editForm.due || "", priority: editForm.priority || "中", scope: editForm.scope === "work" ? "work" : "personal", catId: editForm.catId || "" } : x) });
-    setEditId(null);
-  };
-
-  const pri = (p) => (p === "高" ? 0 : p === "低" ? 2 : 1); // 高 → 中 → 低
-  const inScope = (x) => scopeFilter === "all" || (x.scope === "work" ? "work" : "personal") === scopeFilter;
-  const open = state.todos.filter((x) => !x.done && inScope(x) && inCat(x)).slice().sort((a, b) => {
-    if (pri(a.priority) !== pri(b.priority)) return pri(a.priority) - pri(b.priority);
-    return (a.due || "9999-99-99").localeCompare(b.due || "9999-99-99");
-  });
-  const done = state.todos.filter((x) => x.done && inScope(x) && inCat(x));
-
-  return (
-    <div className="dp-wrap">
-      <header className="dp-head">
-        <div>
-          <div className="dp-eyebrow">待辦事項</div>
-          <h1 className="dp-h1">該做的事</h1>
-        </div>
-      </header>
-
-      <div className="dp-igfilter">
-        <button className={"dp-igf" + (scopeFilter === "all" ? " on" : "")} onClick={() => setScopeFilter("all")}>全部</button>
-        <button className={"dp-igf" + (scopeFilter === "personal" ? " on" : "")} onClick={() => setScopeFilter("personal")}>私人</button>
-        <button className={"dp-igf" + (scopeFilter === "work" ? " on" : "")} onClick={() => setScopeFilter("work")}>公務</button>
-        <span className="dp-hint" style={{ marginLeft: 4, alignSelf: "center" }}>{scopeFilter === "all" ? "新增的待辦預設私人" : "新增的待辦會歸「" + scopeLabel(scopeFilter) + "」"}</span>
-      </div>
-
-      {cats.length > 0 && (
-        <div className="dp-igfilter">
-          <button className={"dp-igf" + (catFilter === "all" ? " on" : "")} onClick={() => setCatFilter("all")}>全部性質</button>
-          {cats.map((c) => (
-            <button key={c.id} className={"dp-igf" + (catFilter === c.id ? " on" : "")} onClick={() => setCatFilter(c.id === catFilter ? "all" : c.id)}>{c.name}</button>
-          ))}
-          <button className={"dp-igf" + (catFilter === "none" ? " on" : "")} onClick={() => setCatFilter("none")}>未分類</button>
-          {catFilter !== "all" && catFilter !== "none" && (
-            <span className="dp-hint" style={{ marginLeft: 4, alignSelf: "center" }}>
-              新增的待辦會歸這個分類{(cats.find((c) => c.id === catFilter) || {}).kind === "idea" ? "，並同步一張閃現卡進卡片盒" : ""}
-            </span>
-          )}
-        </div>
-      )}
-
-      <div className="dp-ai">
-        <div className="dp-segs">
-          <button className={"dp-seg" + (mode === "text" ? " on" : "")} onClick={() => { setMode("text"); setErr(""); }}>貼對話文字</button>
-          <button className={"dp-seg" + (mode === "image" ? " on" : "")} onClick={() => { setMode("image"); setErr(""); }}>貼截圖</button>
-        </div>
-
-        {mode === "text" ? (
-          <>
-            <textarea
-              className="dp-ta"
-              rows={4}
-              placeholder="把公事群組的對話複製貼進來…"
-              value={lineText}
-              onChange={(e) => setLineText(e.target.value)}
-            />
-            <div className="dp-ai-bar">
-              <button className="dp-btn solid" disabled={busy} onClick={extractText}>
-                {busy ? "AI 分析中…" : "萃取待辦"}
-              </button>
-              {err && <span className="dp-err">{err}</span>}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="dp-drop" onClick={() => fileRef.current && fileRef.current.click()}>
-              {imgs.length === 0 ? (
-                <span>點此選擇 LINE 截圖（可一次多張）</span>
-              ) : (
-                <div className="dp-thumbs">
-                  {imgs.map((i) => (
-                    <div key={i.id} className="dp-thumb">
-                      <img src={i.url} alt="截圖" />
-                      <button className="dp-thumb-x" onClick={(ev) => { ev.stopPropagation(); removeImg(i.id); }}>刪</button>
-                    </div>
-                  ))}
-                  <span className="dp-thumb-add">＋ 再加</span>
-                </div>
-              )}
-            </div>
-            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={onPickFiles} />
-            <div className="dp-ai-bar">
-              <button className="dp-btn solid" disabled={busy || imgs.length === 0} onClick={extractImages}>
-                {busy ? "AI 讀圖中…" : "讀取截圖待辦"}
-              </button>
-              {err && <span className="dp-err">{err}</span>}
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="dp-quick">
-        <input
-          placeholder="手動加一筆待辦…"
-          value={quick}
-          onChange={(e) => setQuick(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addQuick()}
-        />
-        <VoiceRecorder onResult={(t) => setQuick((p) => p + t)} />
-        <button className="dp-btn" onClick={addQuick}>加入</button>
-      </div>
-
-      <details className="dp-bulk">
-        <summary>批次匯入（一次貼多筆，或貼我整理好的清單）</summary>
-        <p className="dp-import-sub">
-          每行一筆待辦即可，前面有 1. 或 - 都沒關係；也支援我給你的 JSON 清單。
-        </p>
-        <textarea className="dp-ta" rows={5}
-          placeholder={"一行一筆，例如：\n1. App修改：諮詢師頁改為館務人員\n2. 服務對象改為0–未滿7歲"}
-          value={bulk} onChange={(e) => setBulk(e.target.value)} />
-        <div className="dp-ai-bar">
-          <button className="dp-btn solid" onClick={importBulk}>批次匯入</button>
-          {bulkMsg && <span className="dp-hint">{bulkMsg}</span>}
-        </div>
-      </details>
-
-      <details className="dp-bulk">
-        <summary>管理性質分類（{cats.length}）</summary>
-        <p className="dp-import-sub">「事件」是做完就銷掉的；「想法」類的待辦在新增時會自動同步一張閃現卡進卡片盒（帶分類標籤＋#待辦想法），累積成第二大腦的素材。先在上方篩選列點選一個分類，再新增的待辦就會歸進去。</p>
-        {cats.map((c) => (
-          <div key={c.id} className="dp-zsug">
-            <span className="dp-zsug-t">{c.name}</span>
-            <span className="dp-zsug-why">{c.kind === "idea" ? "想法（同步卡片盒）" : "事件"}</span>
-            <span className="dp-zsug-btns">
-              <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px" }} onClick={() => renameCat(c)}>改名</button>
-              <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px" }} onClick={() => delCat(c)}>刪除</button>
-            </span>
-          </div>
-        ))}
-        <div className="dp-ai-bar" style={{ flexWrap: "wrap" }}>
-          <input className="dp-src" style={{ marginBottom: 0, maxWidth: 160 }} placeholder="新分類名稱"
-            value={newCat} onChange={(e) => setNewCat(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCat()} />
-          <select className="dp-src" style={{ marginBottom: 0, maxWidth: 170 }} value={newCatKind} onChange={(e) => setNewCatKind(e.target.value)}>
-            <option value="event">事件</option>
-            <option value="idea">想法（同步卡片盒）</option>
-          </select>
-          <button className="dp-btn solid" onClick={addCat}>新增分類</button>
-        </div>
-      </details>
-
-      <div className="dp-todos">
-        {open.length === 0 && <Empty>目前沒有未完成的事項。</Empty>}
-        {open.map((x) => (
-          <div key={x.id} className="dp-todo">
-            <button className="dp-check" onClick={() => toggle(x.id)} />
-            {editId === x.id ? (
-              <div className="dp-todo-b">
-                <input className="dp-src" style={{ marginBottom: 6 }} value={editForm.text}
-                  onChange={(e) => setEditForm({ ...editForm, text: e.target.value })}
-                  onKeyDown={(e) => e.key === "Enter" && saveEdit()} />
-                <div className="dp-ai-bar" style={{ margin: 0, flexWrap: "wrap" }}>
-                  <input className="dp-src" style={{ marginBottom: 0, maxWidth: 120 }} placeholder="負責人"
-                    value={editForm.owner} onChange={(e) => setEditForm({ ...editForm, owner: e.target.value })} />
-                  <input type="date" className="dp-src" style={{ marginBottom: 0, maxWidth: 150 }}
-                    value={editForm.due} onChange={(e) => setEditForm({ ...editForm, due: e.target.value })} />
-                  <select className="dp-src" style={{ marginBottom: 0, maxWidth: 80 }}
-                    value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>
-                    <option value="高">高</option>
-                    <option value="中">中</option>
-                    <option value="低">低</option>
-                  </select>
-                  <select className="dp-src" style={{ marginBottom: 0, maxWidth: 90 }}
-                    value={editForm.scope} onChange={(e) => setEditForm({ ...editForm, scope: e.target.value })}>
-                    <option value="personal">私人</option>
-                    <option value="work">公務</option>
-                  </select>
-                  <select className="dp-src" style={{ marginBottom: 0, maxWidth: 130 }}
-                    value={editForm.catId} onChange={(e) => setEditForm({ ...editForm, catId: e.target.value })}>
-                    <option value="">未分類</option>
-                    {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <button className="dp-btn solid" onClick={saveEdit}>儲存</button>
-                  <button className="dp-btn" onClick={() => setEditId(null)}>取消</button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="dp-todo-b">
-                  <span className="dp-todo-text">{x.text}</span>
-                  <span className="dp-todo-meta">
-                    <em style={{ color: x.scope === "work" ? "var(--blue)" : "var(--sub)", fontStyle: "normal", fontWeight: 500 }}>{scopeLabel(x.scope)}</em>
-                    {catOfTodo(x) && <em style={{ color: catOfTodo(x).kind === "idea" ? "var(--gold)" : "#5a6b7a", fontStyle: "normal", fontWeight: 500 }}>{catOfTodo(x).name}</em>}
-                    {x.owner && <em>{x.owner}</em>}
-                    {x.due && <em>· {x.due}</em>}
-                    <i className={"dp-pri " + x.priority}>{x.priority}</i>
-                  </span>
-                </div>
-                <button className="dp-x" style={{ color: "var(--sub)" }} title="編輯" onClick={() => startEdit(x)}>編輯</button>
-                <button className="dp-x" onClick={() => del(x.id)}>刪除</button>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {done.length > 0 && (
-        <details className="dp-done">
-          <summary>已完成 {done.length} 件</summary>
-          {done.map((x) => (
-            <div key={x.id} className="dp-todo done">
-              <button className="dp-check on" onClick={() => toggle(x.id)} />
-              <span className="dp-todo-text">{x.text}</span>
-              <button className="dp-x" onClick={() => del(x.id)}>刪除</button>
-            </div>
-          ))}
-        </details>
-      )}
     </div>
   );
 }
@@ -2987,7 +2595,7 @@ function IG({ state, update }) {
 
       {published.length > 0 && (
         <details className="dp-done" style={{ marginTop: 16 }}>
-          <summary>已發布 {published.length} 則（已歸入「完成紀錄」）</summary>
+          <summary>已發布 {published.length} 則</summary>
           {published.map((p) => (
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 4px", borderBottom: "1px dashed #e6e5e0", fontSize: 13.5 }}>
               <span className="dp-catdot" style={{ background: igAccOf(p.account).color }} />
@@ -3240,18 +2848,16 @@ function Journal({ state, update }) {
   const [err, setErr] = useState("");
 
   const dayEvents = state.events.filter((e) => e.date === date);
-  const dayDone = state.todos.filter((x) => x.done && (x.doneAt === date || (!x.doneAt && date === todayISO())));
   const existing = state.journal.find((j) => j.date === date);
 
   const generate = async () => {
     setBusy(true); setErr(""); setDraft("");
     const material = {
       行程: dayEvents.map((e) => `${e.time || ""} ${e.title}（${catOf(e.category).label}）`),
-      完成的待辦: dayDone.map((x) => x.text),
     };
     try {
       const out = await callClaude(
-        "你是親子館館長的手帳助理。根據今天的行程與完成事項，幫她寫一段溫暖、精簡的手帳流水帳草稿，方便她照著抄進紙本手帳。分「工作」「個人」「心情/備註」三段，用繁體中文，語氣自然不浮誇。直接輸出文字即可。",
+        "你是親子館館長的手帳助理。根據今天的行程，幫她寫一段溫暖、精簡的手帳流水帳草稿，方便她照著抄進紙本手帳。分「工作」「個人」「心情/備註」三段，用繁體中文，語氣自然不浮誇。直接輸出文字即可。",
         JSON.stringify(material, null, 2)
       );
       setDraft(out);
@@ -3284,12 +2890,6 @@ function Journal({ state, update }) {
           <span className="dp-jmat-h">今日行程</span>
           {dayEvents.length === 0 ? <em>無</em> : dayEvents.map((e) => (
             <div key={e.id} className="dp-jmat-i"><i style={{ background: catOf(e.category).dot }} />{e.title}</div>
-          ))}
-        </div>
-        <div className="dp-jmat-col">
-          <span className="dp-jmat-h">{date.slice(5)} 已完成事項</span>
-          {dayDone.length === 0 ? <em>無</em> : dayDone.map((x) => (
-            <div key={x.id} className="dp-jmat-i"><i style={{ background: "var(--sub)" }} />{x.text}</div>
           ))}
         </div>
       </div>
@@ -3549,6 +3149,265 @@ function autoZettel(idea, curState) {
   };
 }
 
+// ─── 落實看板：把洞察／場域點子／最小行動／行動建議「挑選」出來，逐一落實在四個場域（無日期、無逾期概念） ───
+const EXEC_DOMAIN_LABEL = { D1: "D1 親子館館務", D2: "D2 進修與AI", D3: "D3 個人品牌", D4: "D4 Sororism" };
+const EXEC_DOMAIN_ORDER = ["D1", "D2", "D3", "D4"];
+
+function ExecBoard({ state, update }) {
+  const picks = state.execPicks || [];
+  const doing = picks.filter((p) => p.status !== "done");
+  const done = picks.filter((p) => p.status === "done");
+
+  const copyItem = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (window.appToast) window.appToast("已複製，可貼進手寫待辦");
+    } catch (e) {
+      let ok = false;
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; ta.style.top = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (e2) {}
+      if (window.appToast) window.appToast(ok ? "已複製，可貼進手寫待辦" : "自動複製失敗，請手動複製。");
+    }
+  };
+  const markDone = (id) => update({ execPicks: picks.map((p) => (p.id === id ? { ...p, status: "done", doneAt: todayISO() } : p)) });
+  const restoreItem = (id) => update({ execPicks: picks.map((p) => (p.id === id ? { ...p, status: "picked", doneAt: "" } : p)) });
+  const removeItem = async (id) => {
+    if (!(await window.appConfirm("確定移除這個落實項目？"))) return;
+    update({ execPicks: picks.filter((p) => p.id !== id) });
+  };
+  const setDomain = (id, domain) => update({ execPicks: picks.map((p) => (p.id === id ? { ...p, domain } : p)) });
+
+  const groups = EXEC_DOMAIN_ORDER.map((code) => ({ code, items: doing.filter((p) => p.domain === code) }))
+    .concat([{ code: "NA", items: doing.filter((p) => !EXEC_DOMAIN_ORDER.includes(p.domain)) }])
+    .filter((g) => g.items.length > 0);
+
+  return (
+    <details className="dp-bulk" open>
+      <summary>落實看板（進行中 {doing.length}・已落實 {done.length}）</summary>
+      {picks.length === 0 && <Empty>還沒有挑選任何項目。到下方發想卡，在洞察、場域點子或行動旁按「挑選」。</Empty>}
+      {groups.map((g) => (
+        <div key={g.code} className="dp-exec-group">
+          <div className="dp-idea-h">{g.code === "NA" ? "未分場域" : EXEC_DOMAIN_LABEL[g.code]}</div>
+          {g.items.map((p) => (
+            <div key={p.id} className="dp-exec-item">
+              <div className="dp-exec-text">{p.text}<span className="dp-hint dp-exec-src">來源：{p.cardTitle}</span></div>
+              <div className="dp-exec-ops">
+                {g.code === "NA" && EXEC_DOMAIN_ORDER.map((c) => (
+                  <button key={c} className="dp-btn" style={{ padding: "2px 9px", fontSize: 12 }} title={EXEC_DOMAIN_LABEL[c]} onClick={() => setDomain(p.id, c)}>{c}</button>
+                ))}
+                <button className="dp-btn" onClick={() => markDone(p.id)}>已落實</button>
+                <button className="dp-btn" onClick={() => copyItem(p.text)}>複製</button>
+                <button className="dp-x" onClick={() => removeItem(p.id)}>移除</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+      {done.length > 0 && (
+        <details className="dp-done">
+          <summary>已落實紀錄（{done.length}）</summary>
+          {done.map((p) => (
+            <div key={p.id} className="dp-exec-item">
+              <div className="dp-exec-text">{p.text}<span className="dp-hint dp-exec-src">{EXEC_DOMAIN_LABEL[p.domain] || "未分場域"}｜{String(p.doneAt || "").replace(/-/g, "/")}</span></div>
+              <div className="dp-exec-ops">
+                <button className="dp-btn" onClick={() => restoreItem(p.id)}>復原</button>
+                <button className="dp-x" onClick={() => removeItem(p.id)}>刪除</button>
+              </div>
+            </div>
+          ))}
+        </details>
+      )}
+    </details>
+  );
+}
+
+// ─── 交叉查證（實驗）：固定用 Gemini 2.5 Flash＋Google 搜尋（免費層目前唯一支援搜尋的模型）───
+const VERIFY_SYS =
+  "你是查證助手。使用者提供一段資訊，可能附對照網址。步驟：一、把資訊拆成可查證的具體主張，最多8條。二、逐條用搜尋查證，有對照網址就一併讀取比對。三、每條給判定：一致、不一致、說法分歧、查不到。四、指出資訊與外部來源的具體差異。規則：繁體中文台灣用語；只根據查到的內容，查不到就寫查不到，不得補寫；輸出純JSON（不要markdown、不要程式碼圍欄）："
+  + "{\"claims\":[{\"claim\":\"\",\"verdict\":\"一致|不一致|說法分歧|查不到\",\"diff\":\"\",\"evidence\":[{\"title\":\"\",\"url\":\"\"}]}],\"summary\":\"\"}";
+
+// 查證用 fetch：照 callClaude 套路，金鑰同一來源、model 寫死 flash，帶 google_search／url_context 工具
+async function callGeminiVerify(text, urls) {
+  const key = getAnthropicKey();
+  if (!key) throw new Error("no_key");
+  const model = "gemini-2.5-flash";
+  const tools = [{ google_search: {} }];
+  let userMsg = text;
+  if (urls && urls.length) {
+    tools.push({ url_context: {} });
+    userMsg += "\n\n對照網址：\n" + urls.join("\n");
+  }
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent";
+  const attempt = async (genCfg) => {
+    const res = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: VERIFY_SYS }] },
+        contents: [{ role: "user", parts: [{ text: userMsg }] }],
+        tools: tools,
+        generationConfig: genCfg,
+      }),
+    }, 60000);
+    if (res.status === 400 || res.status === 403) throw new Error("bad_key");
+    if (res.status === 429) {
+      let body = ""; try { body = JSON.stringify(await res.json()); } catch (e) {}
+      throw new Error(/perday|per day|daily/i.test(body) ? "rate_limit_day" : "rate_limit");
+    }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const cand = data.candidates && data.candidates[0];
+    const outText = (cand && cand.content && cand.content.parts)
+      ? cand.content.parts.map((p) => p.text || "").join("\n").trim()
+      : "";
+    return { data, cand, outText };
+  };
+  // Flash 預設思考會吃掉輸出額度（App 既有教訓）→ 先關思考；若「關思考＋搜尋」組合回空，放開思考重試一次
+  let r = await attempt({ maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 0 } });
+  if (!r.outText) r = await attempt({ maxOutputTokens: 8192 });
+  if (!r.outText) {
+    const why = (r.cand && r.cand.finishReason) || (r.data.promptFeedback && r.data.promptFeedback.blockReason) || "empty";
+    throw new Error(why === "MAX_TOKENS" ? "truncated" : "empty_response");
+  }
+  const data = r.data;
+  const cand = r.cand;
+  const outText = r.outText;
+  const chunks = (cand.groundingMetadata && cand.groundingMetadata.groundingChunks) || [];
+  const seen = new Set();
+  const sources = [];
+  chunks.forEach((c) => {
+    const w = c && c.web;
+    if (!w || !w.uri || seen.has(w.uri)) return;
+    seen.add(w.uri);
+    sources.push({ title: w.title || w.uri, url: w.uri });
+  });
+  return { text: outText, sources };
+}
+// 查證結果清洗：向後防禦式寫法，比照 cleanIdeaB
+function cleanVerify(o) {
+  const arr = (a) => (Array.isArray(a) ? a : []);
+  const claims = arr(o && o.claims).map((c) => ({
+    claim: stripMd(c && c.claim),
+    verdict: ["一致", "不一致", "說法分歧", "查不到"].includes(c && c.verdict) ? c.verdict : "查不到",
+    diff: stripMd(c && c.diff),
+    evidence: arr(c && c.evidence).map((e) => ({
+      title: stripMd(e && e.title),
+      url: (e && typeof e.url === "string") ? e.url.trim() : "",
+    })).filter((e) => e.url),
+  })).filter((c) => c.claim);
+  return { claims, summary: stripMd(o && o.summary) };
+}
+
+const VF_VERDICT_COLOR = { "一致": "var(--brand)", "不一致": "var(--accent)", "說法分歧": "var(--gold)", "查不到": "var(--muted)" };
+
+function VerifyLab({ state, update }) {
+  const [text, setText] = useState("");
+  const [urls, setUrls] = useState(["", "", ""]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null); // { claims, summary, sources }
+  const [saveMsg, setSaveMsg] = useState("");
+
+  const setUrlAt = (i, v) => setUrls((u) => u.map((x, j) => (j === i ? v : x)));
+
+  const run = async () => {
+    if (!text.trim() || busy) return;
+    const validUrls = [];
+    for (const u of urls) {
+      if (!u.trim()) continue;
+      const v = validateFetchUrl(u);
+      if (!v.ok) { if (window.appToast) window.appToast(v.msg); return; }
+      validUrls.push(v.url.href);
+    }
+    setBusy(true); setErr(""); setResult(null); setSaveMsg("");
+    try {
+      const out = await callGeminiVerify(text.trim(), validUrls);
+      const cleaned = cleanVerify(parseJSON(out.text));
+      if (!cleaned.claims.length) throw new Error("bad_json");
+      setResult({ claims: cleaned.claims, summary: cleaned.summary, sources: out.sources });
+    } catch (e) {
+      if (e && (e.message === "rate_limit" || e.message === "rate_limit_day")) {
+        if (window.appToast) window.appToast("搜尋查證額度可能已用完（免費層每天約500次、規則會變），稍後再試");
+      } else {
+        setErr(aiErrMsg(e, "查證"));
+      }
+    }
+    setBusy(false);
+  };
+
+  const saveCard = () => {
+    if (!result || !result.claims.length) return;
+    const body = result.claims.map((c, i) =>
+      (i + 1) + "、" + c.claim
+      + "\n判定：" + c.verdict
+      + (c.diff ? "\n差異：" + c.diff : "")
+      + (c.evidence.length ? "\n來源：" + c.evidence.map((e) => e.url).join("、") : "")
+    ).join("\n\n");
+    const card = {
+      id: uid(), num: String(state.zettel.length + 1), date: todayISO(), links: [],
+      type: "permanent",
+      title: "查證：" + text.trim().slice(0, 20),
+      content: body + (result.summary ? "\n\n總結：" + result.summary : ""),
+      tags: ["查證"],
+    };
+    update({ zettel: [card, ...state.zettel] });
+    setSaveMsg("已存入卡片盒");
+    if (window.appToast) window.appToast("已存入卡片盒");
+  };
+
+  return (
+    <details className="dp-bulk">
+      <summary>交叉查證（實驗）</summary>
+      <textarea className="dp-ta" rows={5} placeholder="貼上要查證的資訊：一段主張或整篇文章"
+        value={text} onChange={(e) => setText(e.target.value)} />
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "9px 0" }}>
+        {urls.map((u, i) => (
+          <input key={i} className="dp-src" style={{ flex: "1 1 200px", margin: 0 }} placeholder="對照網址（選填）"
+            value={u} onChange={(e) => setUrlAt(i, e.target.value)} />
+        ))}
+      </div>
+      <div className="dp-ai-bar">
+        <button className="dp-btn solid" disabled={busy} onClick={run}>{busy ? "查證中" : "開始查證"}</button>
+        {err && <span className="dp-err">{err}</span>}
+      </div>
+      <p className="dp-hint" style={{ margin: "6px 0 0" }}>查證固定使用 Gemini 2.5 Flash（目前免費層唯一開放 Google 搜尋的模型）；官方額度規則仍在調整，失敗多半是額度用完或方案限制。</p>
+
+      {result && (
+        <div style={{ marginTop: 14 }}>
+          {result.claims.map((c, i) => (
+            <div key={i} className="dp-vf-item">
+              <span className="dp-vf-badge" style={{ color: VF_VERDICT_COLOR[c.verdict], borderColor: VF_VERDICT_COLOR[c.verdict] }}>{c.verdict}</span>
+              <div style={{ marginTop: 6, fontSize: 13.5, lineHeight: 1.7 }}>{c.claim}</div>
+              {c.diff && <div className="dp-hint" style={{ marginTop: 4 }}>差異：{c.diff}</div>}
+              {c.evidence.length > 0 && c.evidence.map((e, j) => (
+                <a key={j} className="dp-vf-src" href={e.url} target="_blank" rel="noopener">{e.title || e.url}</a>
+              ))}
+            </div>
+          ))}
+          {result.summary && <p style={{ fontSize: 13.5, lineHeight: 1.7 }}><b>總結：</b>{result.summary}</p>}
+          {result.sources && result.sources.length > 0 && (
+            <div className="dp-idea-sec">
+              <div className="dp-idea-h">搜尋到的來源</div>
+              {result.sources.map((s, i) => (
+                <a key={i} className="dp-vf-src" href={s.url} target="_blank" rel="noopener">{s.title}</a>
+              ))}
+            </div>
+          )}
+          <div className="dp-ai-bar">
+            <button className="dp-btn" onClick={saveCard}>存成查證卡</button>
+            {saveMsg && <span className="dp-hint">{saveMsg}</span>}
+          </div>
+        </div>
+      )}
+    </details>
+  );
+}
+
 function Ideas({ state, update, go }) {
   const [raw, setRaw] = useState("");
   const [src, setSrc] = useState("");
@@ -3735,6 +3594,10 @@ function Ideas({ state, update, go }) {
         <Trends state={state} update={update} go={go} />
       </details>
 
+      <VerifyLab state={state} update={update} />
+
+      <ExecBoard state={state} update={update} />
+
       {(() => {
         const PER = 10;
         const total = Math.max(1, Math.ceil(state.ideas.length / PER));
@@ -3784,9 +3647,23 @@ function IdeaCard({ idea, onDel, state, update }) {
     update({ reviews: [{ ...r, id: uid(), ideaId: idea.id, date: todayISO() }, ...state.reviews] });
     setReview(null);
   };
-  const importActions = (acts) => {
-    const todos = acts.filter(Boolean).map((t) => ({ id: uid(), text: t, owner: "", due: "", priority: "中", done: false }));
-    if (todos.length) update({ todos: [...todos, ...state.todos] });
+  const copyActions = async (acts) => {
+    const text = acts.filter(Boolean).join("\n");
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (window.appToast) window.appToast("已複製，可貼進手寫待辦");
+    } catch (e) {
+      let ok = false;
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; ta.style.top = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (e2) {}
+      if (window.appToast) window.appToast(ok ? "已複製，可貼進手寫待辦" : "自動複製失敗，請手動複製。");
+    }
   };
   const delReview = (id) => update({ reviews: state.reviews.filter((r) => r.id !== id) });
 
@@ -3812,25 +3689,44 @@ function IdeaCard({ idea, onDel, state, update }) {
     update({ igCandidates: [c, ...(state.igCandidates || [])] });
     if (window.appToast) window.appToast("已加入 IG 候選池，到「IG 排程」分頁編輯／選日期");
   };
-  // D1/D2 等領域的最小行動 → 一鍵變待辦（D1 親子館自動標公務），這是四域中非 IG 領域的實際產出出口
-  const addDomainTodo = (d) => {
+  // D1/D2 等領域的最小行動 → 一鍵複製成文字，這是四域中非 IG 領域的實際產出出口
+  const copyDomainAction = async (d) => {
     const text = "【" + ((d.code || "") + (d.name ? " " + d.name : "")).trim() + "】" + d.nextAction
       + (d.deliverable ? "（產物：" + d.deliverable + "）" : "");
-    if ((state.todos || []).some((t) => t.text === text)) {
-      if (window.appToast) window.appToast("這條行動已經在待辦清單了");
-      return;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (window.appToast) window.appToast("已複製，可抄進手寫待辦");
+    } catch (e) {
+      let ok = false;
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; ta.style.top = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (e2) {}
+      if (window.appToast) window.appToast(ok ? "已複製，可抄進手寫待辦" : "自動複製失敗，請手動複製。");
     }
-    const todo = { id: uid(), text: text, owner: "", due: "", priority: "中", done: false, scope: d.code === "D1" ? "work" : "personal", catId: "" };
-    update({ todos: [todo, ...state.todos] });
-    if (window.appToast) window.appToast("已加入待辦（" + (d.code === "D1" ? "公務" : "私人") + "），到「待辦」分頁安排時間");
   };
-  // 下一步行動整批 → 待辦（自動去重）
-  const actionsToTodos = () => {
-    const news = (idea.actions || []).filter((a) => a && !(state.todos || []).some((t) => t.text === a));
-    if (!news.length) { if (window.appToast) window.appToast("這些行動已經都在待辦清單了"); return; }
-    const todos = news.map((a) => ({ id: uid(), text: a, owner: "", due: "", priority: "中", done: false, scope: "personal", catId: "" }));
-    update({ todos: [...todos, ...state.todos] });
-    if (window.appToast) window.appToast("已把 " + todos.length + " 條行動加入待辦");
+  // 下一步行動整批 → 複製成多行文字，貼進手寫待辦
+  const copyAllActions = async () => {
+    const acts = (idea.actions || []).filter(Boolean);
+    if (!acts.length) { if (window.appToast) window.appToast("這張卡還沒有下一步行動"); return; }
+    const text = acts.join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      if (window.appToast) window.appToast("已複製 " + acts.length + " 條行動，可貼進手寫待辦");
+    } catch (e) {
+      let ok = false;
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; ta.style.top = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (e2) {}
+      if (window.appToast) window.appToast(ok ? "已複製 " + acts.length + " 條行動，可貼進手寫待辦" : "自動複製失敗，請手動複製。");
+    }
   };
 
   // B 版：把舊格式卡就地升級成新格式（用既有摘要重跑四域＋四帳；原文不可考，證據上限＝作者主張）
@@ -3923,6 +3819,23 @@ function IdeaCard({ idea, onDel, state, update }) {
     </button>
   );
 
+  // 落實看板：把洞察／場域點子／最小行動／行動建議「挑選」進 execPicks；防重複＝cardId+text
+  const pickExec = (text, domain) => {
+    if (!text) return;
+    if ((state.execPicks || []).some((p) => p.cardId === idea.id && p.text === text)) return;
+    const item = { id: uid(), cardId: idea.id, cardTitle: idea.title, domain: domain || "NA", text, addedAt: todayISO(), status: "picked", doneAt: "" };
+    update({ execPicks: [item, ...(state.execPicks || [])] });
+    if (window.appToast) window.appToast("已加入落實看板");
+  };
+  const PickBtn = ({ text, domain }) => {
+    const picked = (state.execPicks || []).some((p) => p.cardId === idea.id && p.text === text);
+    if (picked) return <span className="dp-hint" style={{ marginLeft: 6 }}>已挑選</span>;
+    return (
+      <button className="dp-btn" style={{ marginLeft: 6, padding: "2px 9px", fontSize: 12, flexShrink: 0 }}
+        onClick={() => pickExec(text, domain)}>挑選</button>
+    );
+  };
+
   return (
     <div className="dp-idea">
       <div className="dp-idea-top">
@@ -3970,6 +3883,7 @@ function IdeaCard({ idea, onDel, state, update }) {
                   <span>{i.claim}
                     {i.conditions ? "（適用：" + i.conditions + "）" : ""}
                     {i.risks ? "｜風險：" + i.risks : ""}</span>
+                  <PickBtn text={i.claim} domain="NA" />
                 </div>
               ))}
             </div>
@@ -3986,12 +3900,20 @@ function IdeaCard({ idea, onDel, state, update }) {
             <div className="dp-idea-sec">
               <div className="dp-idea-h">可以用在哪（點方框開始復盤）</div>
               <div className="dp-idea-grid">
-                {idea.branches.map((b, i) => (
-                  <div key={i} className="dp-idea-br" style={{ borderLeftColor: BR_COLORS[i % BR_COLORS.length] }}>
-                    <div className="dp-idea-area" style={{ color: BR_COLORS[i % BR_COLORS.length] }}>{b.area}</div>
-                    {(b.ideas || []).map((x, j) => <Leaf key={j} text={x} color={BR_COLORS[i % BR_COLORS.length]} />)}
-                  </div>
-                ))}
+                {idea.branches.map((b, i) => {
+                  const bcode = ((idea.domains || []).filter((d) => d.fit !== "不適用")[i] || {}).code || "NA";
+                  return (
+                    <div key={i} className="dp-idea-br" style={{ borderLeftColor: BR_COLORS[i % BR_COLORS.length] }}>
+                      <div className="dp-idea-area" style={{ color: BR_COLORS[i % BR_COLORS.length] }}>{b.area}</div>
+                      {(b.ideas || []).map((x, j) => (
+                        <div key={j} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}><Leaf text={x} color={BR_COLORS[i % BR_COLORS.length]} /></div>
+                          <PickBtn text={x} domain={bcode} />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -4008,8 +3930,9 @@ function IdeaCard({ idea, onDel, state, update }) {
                     {d.fit !== "不適用" && d.deliverable ? "｜產物：" + d.deliverable : ""}</span>
                   {d.fit !== "不適用" && d.nextAction ? (
                     <button className="dp-btn" style={{ marginLeft: 6, padding: "2px 9px", fontSize: 12, flexShrink: 0 }}
-                      onClick={() => addDomainTodo(d)}>→ 待辦</button>
+                      onClick={() => copyDomainAction(d)}>複製</button>
                   ) : null}
+                  {d.fit !== "不適用" && d.nextAction ? <PickBtn text={d.nextAction} domain={d.code || "NA"} /> : null}
                 </div>
               ))}
             </div>
@@ -4056,10 +3979,10 @@ function IdeaCard({ idea, onDel, state, update }) {
           {idea.actions.length > 0 && (
             <div className="dp-idea-sec">
               <div className="dp-idea-h">下一步行動
-                <button className="dp-btn" style={{ marginLeft: 8, padding: "2px 9px", fontSize: 12 }} onClick={actionsToTodos}>＋ 全部轉待辦</button>
+                <button className="dp-btn" style={{ marginLeft: 8, padding: "2px 9px", fontSize: 12 }} onClick={copyAllActions}>複製全部行動</button>
               </div>
               {idea.actions.map((a, i) => (
-                <div key={i} className="dp-idea-act"><span className="dp-idea-box" />{a}</div>
+                <div key={i} className="dp-idea-act"><span className="dp-idea-box" /><span style={{ flex: 1 }}>{a}</span><PickBtn text={a} domain="NA" /></div>
               ))}
             </div>
           )}
@@ -4102,7 +4025,7 @@ function IdeaCard({ idea, onDel, state, update }) {
       </div>
 
       {review && (
-        <Review key={review} topic={review} onClose={() => setReview(null)} onSave={saveReview} onImport={importActions} />
+        <Review key={review} topic={review} onClose={() => setReview(null)} onSave={saveReview} onImport={copyActions} />
       )}
 
       {myReviews.length > 0 && (
@@ -4258,7 +4181,7 @@ function Review({ topic, onClose, onSave, onImport }) {
           </div>
           <div className="dp-ai-bar">
             <button className="dp-btn solid" onClick={() => onSave(result)}>存檔</button>
-            {result.next.length > 0 && <button className="dp-btn" onClick={() => { onImport(result.next); }}>下次行動加入待辦</button>}
+            {result.next.length > 0 && <button className="dp-btn" onClick={() => { onImport(result.next); }}>複製下次行動</button>}
             <button className="dp-btn" onClick={() => setPhase("answer")}>回去修改</button>
           </div>
           <span className="dp-hint">存檔後會記錄在這張卡片的「歷次復盤」裡。</span>
@@ -4810,76 +4733,6 @@ function Zettel({ state, update, openCard }) {
         </>
         )}
       </>
-      )}
-    </div>
-  );
-}
-
-// ─── DONE LOG (完成紀錄) ──────────────────────────────────────
-function Done({ state, update }) {
-  const reopen = (id) =>
-    update({ todos: state.todos.map((x) => x.id === id ? { ...x, done: false, doneAt: "" } : x) });
-  const delJournal = (id) => update({ journal: state.journal.filter((j) => j.id !== id) });
-
-  // 統一完成時間軸：待辦打勾 + 已發 IG，依日期合併在同一條
-  const byDate = {};
-  state.todos.filter((x) => x.done).forEach((x) => {
-    const d = x.doneAt || "未記錄日期";
-    (byDate[d] = byDate[d] || []).push({ kind: "todo", key: x.id, todo: x });
-  });
-  state.igPosts.filter((p) => p.status === "已發").forEach((p) => {
-    const d = p.date || "未記錄日期";
-    (byDate[d] = byDate[d] || []).push({ kind: "ig", key: p.id, post: p });
-  });
-  const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
-
-  const journals = [...state.journal].sort((a, b) => b.date.localeCompare(a.date));
-
-  return (
-    <div className="dp-wrap">
-      <header className="dp-head">
-        <div>
-          <div className="dp-eyebrow">完成紀錄</div>
-          <h1 className="dp-h1">做過的事，都記得</h1>
-        </div>
-      </header>
-
-      <div className="dp-idea-h">已完成事項（依日期）</div>
-      {dates.length === 0 ? (
-        <Empty>還沒有完成的事項。待辦打勾、或把 IG 貼文標「已發」就會收到這裡。</Empty>
-      ) : (
-        dates.map((d) => (
-          <div key={d} className="dp-donegrp">
-            <div className="dp-donedate">{d}</div>
-            {byDate[d].map((it) =>
-              it.kind === "todo" ? (
-                <div key={it.key} className="dp-doneitem">
-                  <span className="dp-donecheck" />
-                  <span className="dp-donetext">{it.todo.text}</span>
-                  <button className="dp-btn dp-donereopen" onClick={() => reopen(it.key)}>重啟</button>
-                </div>
-              ) : (
-                <div key={it.key} className="dp-doneitem">
-                  <span className="dp-donecheck" style={{ background: igAccOf(it.post.account).color }}>IG</span>
-                  <span className="dp-donetext">
-                    <b style={{ color: igAccOf(it.post.account).color }}>{igAccOf(it.post.account).label}</b>
-                    　{postTypeOf(it.post.type)}　{it.post.topic}
-                  </span>
-                </div>
-              )
-            )}
-          </div>
-        ))
-      )}
-
-      <div className="dp-idea-h" style={{ marginTop: 26 }}>手帳草稿紀錄</div>
-      {journals.length === 0 ? <Empty>還沒有存過手帳草稿。</Empty> : (
-        journals.map((j) => (
-          <div key={j.id} className="dp-jpast">
-            <div className="dp-rvitem-top"><b>{j.date}</b><button className="dp-x" onClick={() => delJournal(j.id)}>刪除</button></div>
-            <pre>{j.text}</pre>
-          </div>
-        ))
       )}
     </div>
   );
@@ -5680,7 +5533,7 @@ function Backup({ state, restoreAll }) {
   const quotaColor = usedPct >= 80 ? "#cf2d56" : usedPct >= 60 ? "#c08532" : "var(--brand)";
 
   const counts = {
-    行程: state.events.length, 待辦: state.todos.length,
+    行程: state.events.length,
     IG: state.igPosts.length, 收藏: state.trends.length,
     手帳: state.journal.length, 信件: state.emails.length,
   };
@@ -5906,7 +5759,7 @@ function Backup({ state, restoreAll }) {
       <div className="dp-ai">
         <div className="dp-ai-t">Gemini API Key</div>
         <p className="dp-ai-sub">
-          AI 功能（萃取待辦、手帳草稿、發想卡片、心智圖…）需要 Gemini API Key，完全免費。
+          AI 功能（手帳草稿、發想卡片、心智圖…）需要 Gemini API Key，完全免費。
           前往 <a className="dp-link" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com</a> 用 Google 帳號登入即可取得，儲存在本機。
         </p>
         <div className="dp-ai-bar" style={{ marginTop: 0, flexWrap: "wrap" }}>
@@ -6174,14 +6027,6 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-seg{padding:7px 16px;font-size:13px;font-weight:500;border-radius:8px;color:#84847e}
 .dp-seg.on{background:var(--card2);color:#26251e;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 
-/* image drop / thumbs */
-.dp-drop{border:1.5px dashed #cdcdc9;border-radius:4px;background:var(--card2);min-height:92px;display:flex;align-items:center;justify-content:center;padding:14px;cursor:pointer;color:#84847e;font-size:13.5px;transition:.15s}
-.dp-drop:hover{border-color:#c08532;background:var(--card2)df8}
-.dp-thumbs{display:flex;gap:10px;flex-wrap:wrap;align-items:center;width:100%}
-.dp-thumb{position:relative;width:62px;height:62px;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
-.dp-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.dp-thumb-x{position:absolute;top:2px;right:2px;background:rgba(38,37,30,.78);color:var(--card2);width:18px;height:18px;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center}
-.dp-thumb-add{font-size:12.5px;color:var(--gold);font-weight:500}
 
 /* news category buttons */
 .dp-newscats{display:flex;gap:9px;flex-wrap:wrap}
@@ -6198,25 +6043,8 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-quick{display:flex;gap:8px;margin-bottom:18px}
 .dp-quick input{flex:1}
 
-/* todos */
-.dp-todos{display:flex;flex-direction:column;gap:8px}
-.dp-todo{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:12px 14px}
-.dp-check{width:20px;height:20px;border:2px solid #cdcdc9;border-radius:4px;flex-shrink:0}
-.dp-check:hover{border-color:#26251e}
-.dp-check.on{background:#26251e;border-color:#26251e;position:relative}
-.dp-check.on::after{content:'';display:block;width:6px;height:6px;border-radius:2px;background:var(--card2);position:absolute;top:5px;left:5px}
-.dp-todo-b{flex:1;display:flex;flex-direction:column;gap:3px}
-.dp-todo-text{font-size:14.5px}
-.dp-todo-meta{display:flex;gap:8px;align-items:center;font-size:12px;color:#a1a19f}
-.dp-todo-meta em{font-style:normal}
-.dp-pri{font-style:normal;font-size:11px;font-weight:500;padding:1px 8px;border-radius:8px}
-.dp-pri.高{background:#f2ede8;color:var(--accent)}
-.dp-pri.中{background:#f2f1ed;color:#34785c}
-.dp-pri.低{background:#eceae5;color:#84847e}
-.dp-todo.done .dp-todo-text{text-decoration:line-through;color:#a1a19f}
 .dp-done{margin-top:16px}
 .dp-done summary{cursor:pointer;font-size:13px;color:var(--muted);padding:8px 0;font-weight:500}
-.dp-done .dp-todo{margin-top:6px}
 
 /* IG */
 .dp-iglist{display:flex;flex-direction:column;gap:9px}
@@ -6309,14 +6137,6 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 .dp-zlinkrow{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px;border-bottom:1px dashed #e6e5e0;cursor:pointer}
 .dp-zlinkrow b{color:#26251e}
 
-/* done log */
-.dp-donegrp{margin-bottom:14px}
-.dp-donedate{font-family:var(--mono);font-size:13px;font-weight:500;color:#26251e;margin-bottom:7px;font-feature-settings:"tnum"}
-.dp-doneitem{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:10px 13px;margin-bottom:6px}
-.dp-donecheck{width:20px;height:20px;background:#26251e;color:var(--card2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
-.dp-donetext{flex:1;font-size:14px;color:#45443d}
-.dp-donereopen{font-size:11px;padding:5px 11px}
-
 /* ideas */
 .dp-ideas{display:flex;flex-direction:column;gap:14px}
 .dp-idea{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px}
@@ -6408,7 +6228,7 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
 
 /* journal */
 .dp-jdate{}
-.dp-jmat{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.dp-jmat{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:16px}
 .dp-jmat-col{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px 16px}
 .dp-jmat-h{font-size:12px;font-weight:500;color:var(--gold);letter-spacing:1px;display:block;margin-bottom:8px}
 .dp-jmat-col em{color:var(--muted);font-style:italic;font-size:13px}
@@ -6516,6 +6336,18 @@ input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink)}
   .dp-spine-foot{display:block;margin-top:auto;padding:12px 8px 4px;font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--muted);border-top:1px solid var(--hair)}
   .dp-page{padding:32px clamp(20px,4vw,56px) 64px}
 }
+
+/* 落實看板 */
+.dp-exec-group{margin-top:14px}
+.dp-exec-item{display:flex;align-items:center;gap:9px;flex-wrap:wrap;border:1px solid var(--line);border-radius:4px;padding:8px 11px;margin:6px 0;background:var(--card2)}
+.dp-exec-text{flex:1;min-width:180px;font-size:13.5px;line-height:1.6}
+.dp-exec-src{display:block;margin-top:2px}
+.dp-exec-ops{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+/* 交叉查證（實驗） */
+.dp-vf-item{border:1px solid var(--line);border-radius:4px;padding:10px 13px;margin:8px 0;background:var(--card2)}
+.dp-vf-badge{display:inline-block;font-size:11px;font-weight:500;padding:3px 10px;border-radius:8px;border:1px solid;background:var(--card)}
+.dp-vf-src{display:block;margin-top:6px;font-size:12.5px;color:var(--blue)}
 `;
 
 
