@@ -1041,7 +1041,8 @@ function Today({ state, go, update }) {
       if (window.appToast) window.appToast(ok ? "已複製，可抄進手寫待辦" : "自動複製失敗，請手動複製。");
     }
   };
-  const todayEvents = state.events.filter((e) => e.date === t);
+  const igEventIds = new Set((state.igPosts || []).map((p) => p.eventId).filter(Boolean)); // 行程卡不列 IG：IG 排程只在「今日要發的 IG」出現（行事曆分頁不受影響）
+  const todayEvents = state.events.filter((e) => e.date === t && !igEventIds.has(e.id));
   const igToday = state.igPosts.filter((p) => p.date === t);
   const supSoon = (state.supplies || [])
     .filter((x) => x.dueDate)
@@ -1101,33 +1102,6 @@ function Today({ state, go, update }) {
           )}
         </Card>
 
-        <Card title="效期・更換提醒" count={supSoon.length} action={() => go("supplies")}>
-          {supSoon.length === 0 ? (
-            <Empty>沒有快到期或待更換的品項。</Empty>
-          ) : (
-            supSoon.slice(0, 5).map((x) => (
-              <Row key={x.id} dot={x.dd < 0 ? "var(--accent)" : "#c08532"}>
-                <b>{x.dd < 0 ? `逾期 ${-x.dd} 天` : x.dd === 0 ? "今天" : `剩 ${x.dd} 天`}</b> {x.name}
-              </Row>
-            ))
-          )}
-        </Card>
-
-        <Card title="今天回顧 3 張卡" count={reviewPick.length} action={() => go("zettel")}>
-          {zAll.length === 0 ? (
-            <Empty>卡片盒還沒有卡片；按 Ctrl+J（或右下「記」）隨時記下靈感。</Empty>
-          ) : reviewPick.length === 0 ? (
-            <Empty>今天都回顧過了，明天再來。</Empty>
-          ) : (
-            reviewPick.map((c) => (
-              <Row key={c.id} dot={ztOf(c.type).color}>
-                {c.title}
-                <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px", marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); markReviewed(c.id); }}>看過了</button>
-              </Row>
-            ))
-          )}
-        </Card>
-
         <Card title="今日復盤問題" count={rvQs.length} action={() => go("ideas")}>
           {ideasAll.length === 0 ? (
             <Empty>還沒有發想卡片；到「四域轉譯所」貼一篇文章，這裡就會每天出題。</Empty>
@@ -1162,6 +1136,33 @@ function Today({ state, go, update }) {
                 <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px" }} onClick={() => { setRvSeed(rvSeed + 1); setRvTopic(null); }}>換一批</button>
               </div>
             </div>
+          )}
+        </Card>
+
+        <Card title="今天回顧 3 張卡" count={reviewPick.length} action={() => go("zettel")}>
+          {zAll.length === 0 ? (
+            <Empty>卡片盒還沒有卡片；按 Ctrl+J（或右下「記」）隨時記下靈感。</Empty>
+          ) : reviewPick.length === 0 ? (
+            <Empty>今天都回顧過了，明天再來。</Empty>
+          ) : (
+            reviewPick.map((c) => (
+              <Row key={c.id} dot={ztOf(c.type).color}>
+                {c.title}
+                <button className="dp-btn" style={{ fontSize: 11, padding: "1px 8px", marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); markReviewed(c.id); }}>看過了</button>
+              </Row>
+            ))
+          )}
+        </Card>
+
+        <Card title="效期・更換提醒" count={supSoon.length} action={() => go("supplies")}>
+          {supSoon.length === 0 ? (
+            <Empty>沒有快到期或待更換的品項。</Empty>
+          ) : (
+            supSoon.slice(0, 5).map((x) => (
+              <Row key={x.id} dot={x.dd < 0 ? "var(--accent)" : "#c08532"}>
+                <b>{x.dd < 0 ? `逾期 ${-x.dd} 天` : x.dd === 0 ? "今天" : `剩 ${x.dd} 天`}</b> {x.name}
+              </Row>
+            ))
           )}
         </Card>
       </div>
