@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <meta name="theme-color" content="#26251e">
 <meta name="robots" content="noindex,nofollow">
+<!-- 資安：內容安全政策（2026-07-30 資安健檢 F-04）
+     script-src 只允許本機（'self' 給 https 部署版、file: 給直接開檔），外部網域的 script 一律載不進來。
+     'unsafe-inline'／'unsafe-eval' 是這支 App 的架構需求（inline script ＋ Babel 轉譯 ＋ 編譯快取 eval），拿掉會直接開不起來。
+     connect-src 刻意保持寬鬆：四域轉譯所的「直接讀取」要能連使用者貼的任何網址，鎖死會逼它每次都退到
+     r.jina.ai 備援，反而讓更多網址被送去第三方。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file: 'unsafe-inline' 'unsafe-eval'; style-src 'self' file: 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' file: data: https://fonts.gstatic.com; img-src 'self' file: data: blob:; connect-src https: http: data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
 <link rel="manifest" href="app.webmanifest">
 <title>館長手帳</title>
 <link rel="icon-unused" type="image/png" sizes="192x192" href="data:image/png;base64,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">
@@ -14,15 +20,36 @@
 <link rel="icon" type="image/png" sizes="192x192" href="app-icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="app-icon-512.png">
 <link rel="apple-touch-icon" sizes="180x180" href="app-icon-180.png">
-<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+<!-- 資安：程式執行環境改由本機載入，不再依賴 unpkg CDN（2026-07-30 資安健檢 F-04）
+     原本三支從 https://unpkg.com 載入且無 SRI，CDN 被投毒或連線被竄改就能讀走 localStorage 裡的
+     GitHub Token、加密密語與 Gemini 金鑰，且 Service Worker 會把被污染的版本永久快取。
+     版本不變（react 18.2.0 / react-dom 18.2.0 / @babel/standalone 7.23.5），
+     檔案取自 unpkg 並與 jsDelivr 逐位元組比對 SHA-256 一致後才放進來。 -->
+<script src="./lib/react.production.min.js"></script>
+<script src="./lib/react-dom.production.min.js"></script>
+<script src="./lib/babel.min.js"></script>
 </head>
 <body style="margin:0;padding:0;background:var(--bg)">
 <div id="dp-err"></div>
 <div id="root"></div>
 <script>
-window.onerror=function(msg,src,line,col,err){var el=document.getElementById('dp-err');el.style.cssText='position:fixed;inset:0;background:#fff;z-index:9999;padding:20px;font-family:monospace;font-size:13px;color:#c00;white-space:pre-wrap;overflow:auto';el.textContent='Runtime error:\n'+msg+'\nLine:'+line+'\n'+(err?err.stack:'');};
+// 錯誤畫面：預設只顯示看得懂的一行，完整堆疊收進「技術細節」摺疊區（2026-07-30 資安健檢 F-11）
+// 堆疊會帶出檔案路徑與內部結構，若哪天部署成公開網頁就不該直接攤在畫面上；但要回報問題時仍點得開。
+// 用 DOM 逐一建立而非 innerHTML，避免把錯誤訊息內容當 HTML 解析。
+window.onerror=function(msg,src,line,col,err){
+  var el=document.getElementById('dp-err');
+  el.style.cssText='position:fixed;inset:0;background:#fff;z-index:9999;padding:20px;font-family:monospace;font-size:13px;color:#c00;white-space:pre-wrap;overflow:auto';
+  el.textContent='';
+  var head=document.createElement('div');
+  head.textContent='程式發生錯誤：'+msg+'（第 '+line+' 行）';
+  el.appendChild(head);
+  if(err&&err.stack){
+    var d=document.createElement('details');d.style.marginTop='12px';
+    var s=document.createElement('summary');s.textContent='顯示技術細節（回報問題時用得到）';s.style.cursor='pointer';
+    var p=document.createElement('pre');p.style.cssText='white-space:pre-wrap;margin-top:8px';p.textContent=err.stack;
+    d.appendChild(s);d.appendChild(p);el.appendChild(d);
+  }
+};
 window.storage={get:async(key)=>{try{const v=localStorage.getItem(key);return v!=null?{value:v}:null;}catch(e){return null;}},set:async(key,value)=>{try{localStorage.setItem(key,value);return true;}catch(e){return false;}}};
 </script>
 <script id="app-src" type="text/plain">
@@ -2970,6 +2997,17 @@ function htmlToArticle(html) {
   const rootEl = doc.querySelector("article") || doc.querySelector("main") || doc.body;
   return { title, author, published, text: squeezeText(rootEl ? rootEl.textContent : "") };
 }
+// 備援讀取會把「整串網址（含 query）」交給第三方轉文字服務，網址本身帶憑證時就等於把憑證送出去。
+// （2026-07-30 資安健檢 F-05：候選池曾存進帶 mcp_token 的 Google Drive 連結）
+// 只攔「看起來像憑證」的參數，其餘照送——否則正常文章網址的定位參數被剝光，備援會大量讀不到。
+const SENSITIVE_PARAM_RE = /(^|_)(token|key|sig|signature|auth|password|passwd|secret|credential|session|access|api)(_|$)|^(pwd|jwt|sid|hash)$/i;
+function credentialParams(href) {
+  try {
+    const hits = [];
+    new URL(href).searchParams.forEach((v, k) => { if (SENSITIVE_PARAM_RE.test(k)) hits.push(k); });
+    return hits;
+  } catch (e) { return []; }
+}
 function fetchUrlTO(u, ms) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
@@ -3000,6 +3038,16 @@ async function readUrlSmart(href) {
     }
   } catch (e) { /* 多半是 CORS 或逾時 → 走備援 */ }
   if (!out) {
+    const cred = credentialParams(href);
+    if (cred.length) {
+      const go = await window.appConfirm(
+        "直接讀取失敗，下一步會把這個網址整串交給第三方轉文字服務（" + URL_READ.FALLBACK_NAME + "）。\n\n" +
+        "但這串網址帶了看起來像憑證的參數：" + cred.join("、") + "\n" +
+        "送出去等於把這段憑證一併交給對方。\n\n" +
+        "仍要送出嗎？（建議按取消，改用下方「貼上全文」）"
+      );
+      if (!go) throw new Error("已取消：網址含憑證參數（" + cred.join("、") + "），沒有送出去。請改用「貼上全文」，或把網址問號後面那段刪掉再試。");
+    }
     let res2;
     try { res2 = await fetchUrlTO(URL_READ.FALLBACK_PREFIX + href, URL_READ.TIMEOUT_MS + 10000); }
     catch (e) { throw new Error("直接讀取被擋，備援服務也連不上（可能離線或服務暫時故障）"); }
@@ -3229,7 +3277,7 @@ function ExecBoard({ state, update }) {
 
 // ─── 交叉查證（實驗）：固定用 Gemini 2.5 Flash＋Google 搜尋（免費層目前唯一支援搜尋的模型）───
 const VERIFY_SYS =
-  "你是查證助手。使用者提供一段資訊，可能附對照網址。步驟：一、把資訊拆成可查證的具體主張，最多8條。二、逐條用搜尋查證，有對照網址就一併讀取比對。三、每條給判定：一致、不一致、說法分歧、查不到。四、指出資訊與外部來源的具體差異。規則：繁體中文台灣用語；只根據查到的內容，查不到就寫查不到，不得補寫；輸出純JSON（不要markdown、不要程式碼圍欄）："
+  "你是查證助手。使用者提供一段資訊，可能附對照網址。步驟：一、把資訊拆成可查證的具體主張，最多8條。二、逐條用搜尋查證，有對照網址就一併讀取比對。三、特別掃描絕對性用詞（唯一、最大、第一、首創、最早、全球前N大等），每一個都要驗證其確切範圍：唯一的是什麼？在哪個範圍內成立？範圍寫錯、誇大或無法確認，寫進該條的 diff。四、關鍵專有名詞先確認定義與指涉對象再比對；發現不同來源把不同東西混用同一個詞、或同一個詞指不同對象，要在 diff 點出。五、每條給判定：一致、不一致、說法分歧、查不到。六、指出資訊與外部來源的具體差異。規則：繁體中文台灣用語；只根據查到的內容，查不到就寫查不到，不得補寫；輸出純JSON（不要markdown、不要程式碼圍欄）："
   + "{\"claims\":[{\"claim\":\"\",\"verdict\":\"一致|不一致|說法分歧|查不到\",\"diff\":\"\",\"evidence\":[{\"title\":\"\",\"url\":\"\"}]}],\"summary\":\"\"}";
 
 // 查證用 fetch：照 callClaude 套路，金鑰同一來源、model 寫死 flash，帶 google_search／url_context 工具
@@ -3306,15 +3354,29 @@ function cleanVerify(o) {
 
 const VF_VERDICT_COLOR = { "一致": "var(--brand)", "不一致": "var(--accent)", "說法分歧": "var(--gold)", "查不到": "var(--muted)" };
 
-function VerifyLab({ state, update }) {
+function VerifyLab({ state, update, prefill }) {
   const [text, setText] = useState("");
   const [urls, setUrls] = useState(["", "", ""]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [result, setResult] = useState(null); // { claims, summary, sources }
   const [saveMsg, setSaveMsg] = useState("");
+  const [vfOpen, setVfOpen] = useState(false); // details 收合狀態，收到 prefill 才展開
+  const [linkIdea, setLinkIdea] = useState(null); // 從發想卡「查證」鈕帶來的 { id, title }，存卡時用來連結回發想卡
+  const boxRef = useRef(null);
 
   const setUrlAt = (i, v) => setUrls((u) => u.map((x, j) => (j === i ? v : x)));
+
+  // 發想卡按「查證」→ 覆蓋這裡的輸入並展開；連按兩張卡以最後一張為準
+  useEffect(() => {
+    if (!prefill) return;
+    setText(prefill.text || "");
+    const v = prefill.url ? validateFetchUrl(prefill.url) : null;
+    setUrls((u) => u.map((x, i) => (i === 0 ? ((v && v.ok) ? v.url.href : "") : x)));
+    setLinkIdea(prefill.ideaId ? { id: prefill.ideaId, title: prefill.ideaTitle || "" } : null);
+    setVfOpen(true);
+    if (boxRef.current && boxRef.current.scrollIntoView) boxRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [prefill]);
 
   const run = async () => {
     if (!text.trim() || busy) return;
@@ -3349,20 +3411,29 @@ function VerifyLab({ state, update }) {
       + (c.diff ? "\n差異：" + c.diff : "")
       + (c.evidence.length ? "\n來源：" + c.evidence.map((e) => e.url).join("、") : "")
     ).join("\n\n");
+    // 這次查證若是從發想卡「查證」鈕來的，找回它的來源索引卡（autoZettelB 標題含「來源索引：」前綴；舊格式沒有前綴，兩種都試）自動連結
+    let links = [];
+    let linkedHit = null;
+    if (linkIdea && linkIdea.title) {
+      linkedHit = findCardByTitle(state.zettel, "來源索引：" + linkIdea.title) || findCardByTitle(state.zettel, linkIdea.title);
+      if (linkedHit) links = [linkedHit.id];
+    }
     const card = {
-      id: uid(), num: String(state.zettel.length + 1), date: todayISO(), links: [],
+      id: uid(), num: String(state.zettel.length + 1), date: todayISO(), links: links,
       type: "permanent",
       title: "查證：" + text.trim().slice(0, 20),
-      content: body + (result.summary ? "\n\n總結：" + result.summary : ""),
+      content: body + (result.summary ? "\n\n總結：" + result.summary : "") + (linkedHit ? "\n相關：[[" + linkedHit.title + "]]" : ""),
       tags: ["查證"],
     };
     update({ zettel: [card, ...state.zettel] });
-    setSaveMsg("已存入卡片盒");
-    if (window.appToast) window.appToast("已存入卡片盒");
+    const msg = linkedHit ? "已存入卡片盒，已連結回發想卡" : "已存入卡片盒";
+    setSaveMsg(msg);
+    if (window.appToast) window.appToast(msg);
+    setLinkIdea(null);
   };
 
   return (
-    <details className="dp-bulk">
+    <details className="dp-bulk" ref={boxRef} open={vfOpen} onToggle={(e) => setVfOpen(e.target.open)}>
       <summary>交叉查證（實驗）</summary>
       <textarea className="dp-ta" rows={5} placeholder="貼上要查證的資訊：一段主張或整篇文章"
         value={text} onChange={(e) => setText(e.target.value)} />
@@ -3423,6 +3494,7 @@ function Ideas({ state, update, go }) {
   const [urlTitle, setUrlTitle] = useState("");
   const [readInfo, setReadInfo] = useState(null); // { readStatus, truncated, author, published }
   const [page, setPage] = useState(1); // 發想卡分頁（每頁 10 則，卡片多了捲軸才不會縮成一小條）
+  const [vfPrefill, setVfPrefill] = useState(null); // 發想卡「查證」鈕 → 交給 VerifyLab 的 { text, url, ideaId, ideaTitle }
 
   const doReadUrl = async () => {
     const v = validateFetchUrl(url);
@@ -3595,7 +3667,7 @@ function Ideas({ state, update, go }) {
         <Trends state={state} update={update} go={go} />
       </details>
 
-      <VerifyLab state={state} update={update} />
+      <VerifyLab state={state} update={update} prefill={vfPrefill} />
 
       <ExecBoard state={state} update={update} />
 
@@ -3616,7 +3688,7 @@ function Ideas({ state, update, go }) {
           <div className="dp-ideas">
             {pager}
             {state.ideas.length === 0 && <Empty>還沒有任何發想。貼一篇電子報，或請對話裡的我幫你發想。</Empty>}
-            {shown.map((idea) => <IdeaCard key={idea.id} idea={idea} onDel={() => del(idea.id)} state={state} update={update} />)}
+            {shown.map((idea) => <IdeaCard key={idea.id} idea={idea} onDel={() => del(idea.id)} state={state} update={update} onVerify={setVfPrefill} />)}
             {pager}
           </div>
         );
@@ -3634,7 +3706,7 @@ const REVIEW_Q = [
   { col: "next",    q: "下一次具體要做的第一件事是什麼？" },
 ];
 
-function IdeaCard({ idea, onDel, state, update }) {
+function IdeaCard({ idea, onDel, state, update, onVerify }) {
   const [layout, setLayout] = useState("card");
   const [review, setReview] = useState(null); // 正在復盤的主題字串
   const [carding, setCarding] = useState(false);
@@ -3643,6 +3715,14 @@ function IdeaCard({ idea, onDel, state, update }) {
   const [upMsg, setUpMsg] = useState("");
 
   const myReviews = state.reviews.filter((r) => r.ideaId === idea.id);
+
+  // 「查證」鈕：標題＋逐條洞察組成查證用文字，交給 Ideas 的 vfPrefill 轉給 VerifyLab
+  const sendVerify = () => {
+    if (!onVerify) return;
+    const claims = (idea.insights || []).map((i) => i.claim).filter(Boolean);
+    const text = (claims.length ? [idea.title, ...claims] : [idea.title, "請貼上想查證的段落"]).join("\n");
+    onVerify({ text: text, url: (idea.sourceInfo && idea.sourceInfo.url) || "", ideaId: idea.id, ideaTitle: idea.title });
+  };
 
   const saveReview = (r) => {
     update({ reviews: [{ ...r, id: uid(), ideaId: idea.id, date: todayISO() }, ...state.reviews] });
@@ -4011,6 +4091,7 @@ function IdeaCard({ idea, onDel, state, update }) {
         <button className="dp-btn" disabled={carding} onClick={toCard}>
           {carding ? "AI 精煉中…" : (idea.carded ? "已有卡片・AI 再精煉一張" : "AI 精煉存入卡片盒")}
         </button>
+        <button className="dp-btn" onClick={sendVerify}>查證</button>
         {!(idea.insights && idea.insights.length) && (
           <button className="dp-btn" disabled={upgrading} onClick={upgrade}>
             {upgrading ? "AI 升級中…（兩階段）" : "⟳ 升級成新格式（四域＋四帳）"}
@@ -5257,6 +5338,33 @@ function Library({ kind, state, update }) {
   );
 }
 
+// ─── 還原前的把關（2026-07-30 資安健檢 F-08）──────────────────
+// 原本 JSON.parse 成功就直接 restoreAll：壞檔、下載到一半的半截檔、別的 App 的 JSON，
+// 都會整包蓋掉手帳，而且幾秒後自動同步、連雲端一起蓋。
+// 這裡只擋「會釀成災難」的三種情況，不做嚴格 schema —— 免得以後欄位增減把舊備份誤擋在門外。
+const BACKUP_KEYS = ["events", "todos", "todoCats", "igPosts", "igCandidates", "sbBoards", "trends", "journal", "emails", "ideas", "reviews", "zettel", "supplies", "novels", "comics"];
+function checkBackupShape(data, current) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return { ok: false, msg: "這個檔案不是手帳備份（最外層不是資料物件）。請確認選到的是「館長手帳備份-…json」。" };
+  }
+  const known = BACKUP_KEYS.filter((k) => k in data);
+  if (known.length === 0) {
+    return { ok: false, msg: "這個檔案裡找不到任何手帳資料欄位（events／igPosts／zettel…），應該不是本 App 的備份檔。" };
+  }
+  const badType = known.filter((k) => !Array.isArray(data[k]));
+  if (badType.length) {
+    return { ok: false, msg: "備份格式不對：「" + badType.join("、") + "」應該是清單卻不是。檔案可能損壞或被改過，沒有還原。" };
+  }
+  // 資料大幅變少 → 不擋，但要再確認一次。半截檔與「另一台的空資料蓋掉主力機」是最常見的災難。
+  const shrink = [];
+  for (const k of BACKUP_KEYS) {
+    const now = Array.isArray(current && current[k]) ? current[k].length : 0;
+    const next = Array.isArray(data[k]) ? data[k].length : 0;
+    if (now >= 10 && next < now * 0.5) shrink.push("　・" + k + "：現在 " + now + " 筆 → 還原後 " + next + " 筆");
+  }
+  return { ok: true, shrink };
+}
+
 function Backup({ state, restoreAll }) {
   // ── 本機備份
   const [msg, setMsg] = useState("");
@@ -5563,7 +5671,10 @@ function Backup({ state, restoreAll }) {
     let data;
     try { data = JSON.parse(await f.text()); }
     catch (err) { setMsg("檔案讀取失敗，請確認是本 App 匯出的備份檔。"); e.target.value = ""; return; }
+    const chk = checkBackupShape(data, state);
+    if (!chk.ok) { setMsg(chk.msg); e.target.value = ""; return; }
     if (!(await window.appConfirm("還原會用這個檔案「覆蓋」現在手帳裡的全部資料，且幾秒後會自動同步到雲端，等於本機和雲端一起被覆蓋。確定要覆蓋嗎？建議先按上方「下載備份檔」保存目前資料。"))) { e.target.value = ""; return; }
+    if (chk.shrink.length && !(await window.appConfirm("等一下——這個備份檔的資料比現在少很多：\n\n" + chk.shrink.join("\n") + "\n\n可能是舊備份、下載到一半的半截檔，或另一台裝置的空資料。確定仍要用它覆蓋嗎？"))) { e.target.value = ""; return; }
     try { restoreAll(data); setMsg("還原完成，資料已回來了。"); }
     catch (err) { setMsg("還原失敗：" + ((err && err.message) || "未知錯誤")); }
     e.target.value = "";
@@ -5574,7 +5685,10 @@ function Backup({ state, restoreAll }) {
     let parsed;
     try { parsed = JSON.parse(pasteCode); }
     catch (e) { setMsg("備份碼格式不對，請貼完整的備份碼。"); return; }
+    const chkC = checkBackupShape(parsed, state);
+    if (!chkC.ok) { setMsg(chkC.msg); return; }
     if (!(await window.appConfirm("還原會用備份碼「覆蓋」現在手帳裡的全部資料，且幾秒後會自動同步到雲端，等於本機和雲端一起被覆蓋。確定要覆蓋嗎？建議先按上方「下載備份檔」保存目前資料。"))) return;
+    if (chkC.shrink.length && !(await window.appConfirm("等一下——這段備份碼的資料比現在少很多：\n\n" + chkC.shrink.join("\n") + "\n\n可能是舊備份或貼不完整。確定仍要用它覆蓋嗎？"))) return;
     try { restoreAll(parsed); setPasteCode(""); setMsg("還原完成，資料已回來了。"); }
     catch (e) { setMsg("還原失敗：" + ((e && e.message) || "未知錯誤")); }
   };
