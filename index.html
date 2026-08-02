@@ -3277,8 +3277,8 @@ function ExecBoard({ state, update }) {
 
 // ─── 交叉查證（實驗）：固定用 Gemini 2.5 Flash＋Google 搜尋（免費層目前唯一支援搜尋的模型）───
 const VERIFY_SYS =
-  "你是查證助手。使用者提供一段資訊，可能附對照網址。步驟：一、把資訊拆成可查證的具體主張，最多8條。二、逐條用搜尋查證，有對照網址就一併讀取比對。三、特別掃描絕對性用詞（唯一、最大、第一、首創、最早、全球前N大等），每一個都要驗證其確切範圍：唯一的是什麼？在哪個範圍內成立？範圍寫錯、誇大或無法確認，寫進該條的 diff。四、關鍵專有名詞先確認定義與指涉對象再比對；發現不同來源把不同東西混用同一個詞、或同一個詞指不同對象，要在 diff 點出。五、每條給判定：一致、不一致、說法分歧、查不到。六、指出資訊與外部來源的具體差異。規則：繁體中文台灣用語；只根據查到的內容，查不到就寫查不到，不得補寫；輸出純JSON（不要markdown、不要程式碼圍欄）："
-  + "{\"claims\":[{\"claim\":\"\",\"verdict\":\"一致|不一致|說法分歧|查不到\",\"diff\":\"\",\"evidence\":[{\"title\":\"\",\"url\":\"\"}]}],\"summary\":\"\"}";
+  "你是查證助手。使用者提供一段資訊，可能附對照網址。步驟：一、把資訊拆成可查證的具體主張，最多8條。二、逐條用搜尋查證，有對照網址就一併讀取比對。三、特別掃描絕對性用詞（唯一、最大、第一、首創、最早、全球前N大等），每一個都要驗證其確切範圍：唯一的是什麼？在哪個範圍內成立？範圍寫錯、誇大或無法確認，寫進該條的 diff。四、關鍵專有名詞先確認定義與指涉對象再比對；發現不同來源把不同東西混用同一個詞、或同一個詞指不同對象，要在 diff 點出。五、每條給判定：一致、不一致、說法分歧、查不到。六、指出資訊與外部來源的具體差異。規則：繁體中文台灣用語；只根據查到的內容，查不到就寫查不到，不得補寫；evidence 只填來源名稱（媒體名或文章標題），禁止自行填寫或猜測網址，真實連結由系統從搜尋資料自動對應；輸出純JSON（不要markdown、不要程式碼圍欄）："
+  + "{\"claims\":[{\"claim\":\"\",\"verdict\":\"一致|不一致|說法分歧|查不到\",\"diff\":\"\",\"evidence\":[\"來源名稱\"]}],\"summary\":\"\"}";
 
 // 查證用 fetch：照 callClaude 套路，金鑰同一來源、model 寫死 flash，帶 google_search／url_context 工具
 async function callGeminiVerify(text, urls) {
@@ -3326,16 +3326,19 @@ async function callGeminiVerify(text, urls) {
   const data = r.data;
   const cand = r.cand;
   const outText = r.outText;
-  const chunks = (cand.groundingMetadata && cand.groundingMetadata.groundingChunks) || [];
+  const meta = cand.groundingMetadata || {};
+  // chunkList 保留原始順序（groundingSupports 用索引對應真來源）；sources 去重後給「搜尋到的來源」區
+  const chunkList = (meta.groundingChunks || []).map((c) =>
+    (c && c.web && c.web.uri) ? { title: c.web.title || c.web.uri, url: c.web.uri } : null
+  );
   const seen = new Set();
   const sources = [];
-  chunks.forEach((c) => {
-    const w = c && c.web;
-    if (!w || !w.uri || seen.has(w.uri)) return;
-    seen.add(w.uri);
-    sources.push({ title: w.title || w.uri, url: w.uri });
+  chunkList.forEach((s) => {
+    if (!s || seen.has(s.url)) return;
+    seen.add(s.url);
+    sources.push(s);
   });
-  return { text: outText, sources };
+  return { text: outText, sources: sources, chunkList: chunkList, supports: meta.groundingSupports || [] };
 }
 // 查證結果清洗：向後防禦式寫法，比照 cleanIdeaB
 function cleanVerify(o) {
@@ -3344,12 +3347,38 @@ function cleanVerify(o) {
     claim: stripMd(c && c.claim),
     verdict: ["一致", "不一致", "說法分歧", "查不到"].includes(c && c.verdict) ? c.verdict : "查不到",
     diff: stripMd(c && c.diff),
-    evidence: arr(c && c.evidence).map((e) => ({
-      title: stripMd(e && e.title),
-      url: (e && typeof e.url === "string") ? e.url.trim() : "",
-    })).filter((e) => e.url),
+    evidence: arr(c && c.evidence).map((e) =>
+      stripMd(typeof e === "string" ? e : ((e && e.title) || ""))
+    ).filter(Boolean),
   })).filter((c) => c.claim);
   return { claims, summary: stripMd(o && o.summary) };
+}
+// 主張對回真實來源：照 Google 官方建議用 groundingSupports 的文字片段對應 groundingChunks
+//（模型自己在 JSON 裡寫的網址常是用猜的、點開會是別篇文章，2026/07/30 起停用）
+function mapVerifyLinks(claims, supports, chunkList) {
+  const norm = (s) => String(s || "").replace(/\s+/g, "").replace(/[\\"「」『』]/g, "");
+  return claims.map((c) => {
+    const nc = norm(c.claim);
+    const hit = new Set();
+    (supports || []).forEach((sp) => {
+      const st = norm(sp && sp.segment && sp.segment.text);
+      if (!st || !nc) return;
+      const a = st.slice(0, 24);
+      const b = nc.slice(0, 24);
+      if ((a && nc.indexOf(a) !== -1) || (b && st.indexOf(b) !== -1)) {
+        (sp.groundingChunkIndices || []).forEach((i) => hit.add(i));
+      }
+    });
+    const seen = new Set();
+    const links = [];
+    hit.forEach((i) => {
+      const s = (chunkList || [])[i];
+      if (!s || seen.has(s.url)) return;
+      seen.add(s.url);
+      links.push(s);
+    });
+    return Object.assign({}, c, { links: links });
+  });
 }
 
 const VF_VERDICT_COLOR = { "一致": "var(--brand)", "不一致": "var(--accent)", "說法分歧": "var(--gold)", "查不到": "var(--muted)" };
@@ -3392,7 +3421,8 @@ function VerifyLab({ state, update, prefill }) {
       const out = await callGeminiVerify(text.trim(), validUrls);
       const cleaned = cleanVerify(parseJSON(out.text));
       if (!cleaned.claims.length) throw new Error("bad_json");
-      setResult({ claims: cleaned.claims, summary: cleaned.summary, sources: out.sources });
+      const linked = mapVerifyLinks(cleaned.claims, out.supports, out.chunkList);
+      setResult({ claims: linked, summary: cleaned.summary, sources: out.sources });
     } catch (e) {
       if (e && (e.message === "rate_limit" || e.message === "rate_limit_day")) {
         if (window.appToast) window.appToast("搜尋查證額度可能已用完（免費層每天約500次、規則會變），稍後再試");
@@ -3409,7 +3439,8 @@ function VerifyLab({ state, update, prefill }) {
       (i + 1) + "、" + c.claim
       + "\n判定：" + c.verdict
       + (c.diff ? "\n差異：" + c.diff : "")
-      + (c.evidence.length ? "\n來源：" + c.evidence.map((e) => e.url).join("、") : "")
+      + ((c.links && c.links.length) ? "\n來源：" + c.links.map((s) => s.title + " " + s.url).join("、")
+        : (c.evidence.length ? "\n來源：" + c.evidence.join("、") : ""))
     ).join("\n\n");
     // 這次查證若是從發想卡「查證」鈕來的，找回它的來源索引卡（autoZettelB 標題含「來源索引：」前綴；舊格式沒有前綴，兩種都試）自動連結
     let links = [];
@@ -3447,7 +3478,7 @@ function VerifyLab({ state, update, prefill }) {
         <button className="dp-btn solid" disabled={busy} onClick={run}>{busy ? "查證中" : "開始查證"}</button>
         {err && <span className="dp-err">{err}</span>}
       </div>
-      <p className="dp-hint" style={{ margin: "6px 0 0" }}>查證固定使用 Gemini 2.5 Flash（目前免費層唯一開放 Google 搜尋的模型）；官方額度規則仍在調整，失敗多半是額度用完或方案限制。</p>
+      <p className="dp-hint" style={{ margin: "6px 0 0" }}>查證固定使用 Gemini 2.5 Flash（目前免費層唯一開放 Google 搜尋的模型）；官方額度規則仍在調整，失敗多半是額度用完或方案限制。主張下的來源連結取自 Google 搜尋實際引用的網頁（轉址網址，放久可能失效），不再由 AI 自行填寫。</p>
 
       {result && (
         <div style={{ marginTop: 14 }}>
@@ -3456,8 +3487,10 @@ function VerifyLab({ state, update, prefill }) {
               <span className="dp-vf-badge" style={{ color: VF_VERDICT_COLOR[c.verdict], borderColor: VF_VERDICT_COLOR[c.verdict] }}>{c.verdict}</span>
               <div style={{ marginTop: 6, fontSize: 13.5, lineHeight: 1.7 }}>{c.claim}</div>
               {c.diff && <div className="dp-hint" style={{ marginTop: 4 }}>差異：{c.diff}</div>}
-              {c.evidence.length > 0 && c.evidence.map((e, j) => (
-                <a key={j} className="dp-vf-src" href={e.url} target="_blank" rel="noopener">{e.title || e.url}</a>
+              {(c.links && c.links.length > 0) ? c.links.map((s, j) => (
+                <a key={j} className="dp-vf-src" href={s.url} target="_blank" rel="noopener">{s.title}</a>
+              )) : (c.evidence.length > 0 && (
+                <div className="dp-hint" style={{ marginTop: 4 }}>來源：{c.evidence.join("、")}（本條未能自動對應連結，請見下方「搜尋到的來源」）</div>
               ))}
             </div>
           ))}
@@ -6473,10 +6506,32 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 (function(){
   var src=document.getElementById('app-src').textContent;
   function showErr(p,e){var el=document.getElementById('dp-err');el.style.cssText='position:fixed;inset:0;background:#fff;z-index:9999;padding:20px;font-family:monospace;font-size:13px;color:#c00;white-space:pre-wrap;overflow:auto';el.textContent=p+'\n'+e.message+(e.stack?'\n\n'+e.stack:'');}
+  function showMsg(lines){var el=document.getElementById('dp-err');el.style.cssText='position:fixed;inset:0;background:#fff;z-index:9999;padding:20px;font-family:monospace;font-size:13px;color:#c00;white-space:pre-wrap;overflow:auto';el.textContent='';for(var i=0;i<lines.length;i++){var d=document.createElement('div');d.textContent=lines[i];el.appendChild(d);}}
   function hash(s){var h=5381,i=s.length;while(i){h=(h*33^s.charCodeAt(--i))>>>0;}return h.toString(36);}
   var KEY='dp-compiled-'+src.length+'-'+hash(src);
+  // 0) 先確認三支函式庫真的載進來了（2026-08-02 修正）
+  //    以前只要 ./lib/ 任何一支沒載到，畫面只會印出「Babel is not defined」，
+  //    看不出真正原因是檔案 404。現在直接指名是哪一支沒到。
+  var missing=[];
+  if(typeof React==='undefined')missing.push('lib/react.production.min.js');
+  if(typeof ReactDOM==='undefined')missing.push('lib/react-dom.production.min.js');
+  if(typeof Babel==='undefined')missing.push('lib/babel.min.js');
+  if(missing.length){
+    showMsg(['程式庫載入失敗，App 無法啟動。','',
+             '沒有載入成功的檔案：'].concat(missing.map(function(m){return '　'+m;})).concat(
+            ['','常見原因：這些檔案沒有上傳到網站（伺服器回 404），或 lib/ 資料夾放錯位置。',
+             '請確認網站根目錄下有 lib/ 資料夾、且裡面三支檔案都在。','',
+             '（重新整理無法解決，需要補上檔案。）']));
+    return;
+  }
   // 1) 快取命中：免重新轉譯，開啟更快（手機／iPad 有感）
-  try{ var cached=localStorage.getItem(KEY); if(cached){ eval(cached); return; } }catch(e){ /* 快取壞掉→走正常編譯 */ }
+  var cached=null;
+  try{ cached=localStorage.getItem(KEY); }catch(e){ cached=null; }
+  if(cached){
+    try{ eval(cached); return; }
+    // 快取壞掉→順手清掉（舊版把壞快取留著，每次開都再撞一次），往下走正常編譯保底
+    catch(e){ try{ localStorage.removeItem(KEY); }catch(e2){} }
+  }
   // 2) 正常路徑（與原本相同，為保底）：轉譯 → 執行 → 存快取
   try{
     var code=Babel.transform(src,{presets:['react']}).code;
